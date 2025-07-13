@@ -21,7 +21,7 @@ class BaseGame(ABC):
         self.last_move_time = time.time()
         self.history = []  # 游戏历史记录
         
-        self.reset()
+        #self.reset()
     
     @abstractmethod
     def reset(self) -> Dict[str, Any]:
