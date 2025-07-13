@@ -5,7 +5,7 @@
 import numpy as np
 import random
 from typing import Dict, List, Tuple, Any, Optional
-from ..base_game import BaseGame
+from games.base_game import BaseGame
 import config
 
 
