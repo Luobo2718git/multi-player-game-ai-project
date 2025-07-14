@@ -84,7 +84,7 @@ class BaseGame(ABC):
         if 'max_moves' in self.game_config:
             return self.move_count >= self.game_config['max_moves']
         return False
-    
+    '''
     def update_game_state(self):
         """更新游戏状态"""
         if self.is_terminal():
@@ -110,6 +110,33 @@ class BaseGame(ABC):
             'last_move_time': time.time() - self.last_move_time,
             'history': self.history.copy()
         }
+    '''
+
+    def update_game(self):
+        """更新游戏状态"""
+        if self.game_over or self.paused:
+            return
+
+        current_time = time.time()
+        if current_time - self.last_update < self.update_interval:
+            return
+
+        self.last_update = current_time
+
+    # AI回合
+        if not isinstance(self.current_agent, HumanAgent):
+            try:
+                observation = self.env._get_observation()
+                action = self.current_agent.get_action(observation, self.env)
+                if action:
+                    self._make_move(action)
+                self.thinking = False
+            except Exception as e:
+                print(f"AI thinking failed: {e}")
+                self.current_agent = self.human_agent
+                self.thinking = False
+
+    # 玩家回合时，不要自动移动蛇，等待玩家按键
     
     def record_move(self, player: int, action: Any, result: Dict[str, Any] = None):
         """记录移动"""

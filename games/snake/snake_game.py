@@ -5,7 +5,7 @@
 import numpy as np
 import random
 from typing import Dict, List, Tuple, Any, Optional
-from games.base_game import BaseGame
+from ..base_game import BaseGame
 import config
 
 
@@ -38,7 +38,6 @@ class SnakeGame(BaseGame):
         # 游戏状态
         self.alive1 = True
         self.alive2 = True
-        
         self.reset()
     
     def reset(self) -> Dict[str, Any]:
@@ -66,40 +65,45 @@ class SnakeGame(BaseGame):
         
         return self.get_state()
     
-    def step(self, action: Tuple[int, int]) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
+    def step(self, action1: Tuple[int, int], action2: Tuple[int, int]) -> Tuple[Dict[str, Any], float, float, bool, Dict[str, Any]]:
         """
-        执行一步动作
-        
+        同时移动两条蛇
         Args:
-            action: (dx, dy) 方向向量
-            
+            action1: 玩家1的动作
+            action2: 玩家2的动作
         Returns:
             observation: 观察状态
-            reward: 奖励
+            reward1: 玩家1奖励
+            reward2: 玩家2奖励
             done: 是否结束
             info: 额外信息
         """
+        # 记录旧存活状态
+        old_alive1 = self.alive1
+        old_alive2 = self.alive2
+
         # 更新方向
-        if self.current_player == 1:
-            self.direction1 = action
-        else:
-            self.direction2 = action
-        
-        # 移动蛇
-        if self.current_player == 1 and self.alive1:
+        if self.alive1:
+            self.direction1 = action1
+        if self.alive2:
+            self.direction2 = action2
+
+        # 同时移动两条蛇
+        if self.alive1:
             self._move_snake(1)
-        elif self.current_player == 2 and self.alive2:
+        if self.alive2:
             self._move_snake(2)
-        
-        # 检查游戏结束条件
+
+        # 检查游戏是否结束
         done = self._check_game_over()
-        
-        # 计算奖励
-        reward = self._calculate_reward()
-        
+
+        # 分别计算奖励
+        reward1 = self._reward_for_player(1, old_alive1)
+        reward2 = self._reward_for_player(2, old_alive2)
+
         # 获取观察状态
         observation = self.get_state()
-        
+
         # 额外信息
         info = {
             'snake1_length': len(self.snake1),
@@ -108,8 +112,46 @@ class SnakeGame(BaseGame):
             'alive1': self.alive1,
             'alive2': self.alive2
         }
-        
-        return observation, reward, done, info
+        return observation, reward1, reward2, done, info
+
+    # === AI助手修改: 兼容单人step接口，方便多游戏GUI统一调用 ===
+    def step_single(self, action: Tuple[int, int], player: int = 1):
+        """
+        兼容单人step接口，自动补全另一个玩家的动作为当前方向
+        目的：让SnakeGame支持只传一个动作，便于和GomokuGame统一接口
+        """
+        if player == 1:
+            return self.step(action, self.direction2)
+        else:
+            return self.step(self.direction1, action)
+
+    @property
+    def board(self):
+        """
+        兼容GomokuGame的board属性，返回当前棋盘
+        目的：让GUI代码可以统一用game.board访问棋盘
+        """
+        return self.get_state()['board']
+
+    def update_game_state(self):
+        """更新游戏状态"""
+        # 贪吃蛇游戏不需要额外的状态更新
+        pass
+    
+    def get_game_info(self) -> Dict[str, Any]:
+        """获取游戏信息"""
+        return {
+            'board_size': self.board_size,
+            'initial_length': self.initial_length,
+            'food_count': self.food_count,
+            'snake1_length': len(self.snake1),
+            'snake2_length': len(self.snake2),
+            'alive1': self.alive1,
+            'alive2': self.alive2,
+            'current_player': self.current_player,
+            'game_state': self.game_state,
+            'move_count': self.move_count
+        }
     
     def get_valid_actions(self, player: int = None) -> List[Tuple[int, int]]:
         """获取有效动作列表"""
@@ -283,17 +325,15 @@ class SnakeGame(BaseGame):
         """检查游戏是否结束"""
         return not (self.alive1 or self.alive2)
     
-    def _calculate_reward(self) -> float:
-        """计算奖励"""
-        if self.current_player == 1:
-            if not self.alive1:
+    def _reward_for_player(self, player: int, old_alive: bool) -> float:
+        if player == 1:
+            if old_alive and not self.alive1:
                 return -1.0
-            elif not self.alive2:
+            elif old_alive and not self.alive2:
                 return 1.0
         else:
-            if not self.alive2:
+            if old_alive and not self.alive2:
                 return -1.0
-            elif not self.alive1:
+            elif old_alive and not self.alive1:
                 return 1.0
-        
         return 0.0 

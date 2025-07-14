@@ -59,6 +59,9 @@ class SnakeGUI:
         self.thinking = False
         self.selected_ai = "SnakeAI"
         self.paused = False
+        self.victory_length = 10  # 达到该长度直接胜利
+        # === AI助手修改: 移除move_pending，支持蛇持续移动 ===
+        # self.move_pending = False  # 玩家是否有输入
         
         # UI元素
         self.buttons = self._create_buttons()
@@ -68,6 +71,8 @@ class SnakeGUI:
         self.update_interval = 0.3  # 300ms更新一次
         
         self.reset_game()
+        self.player_direction = self.env.game.direction1
+        self.ai_direction = self.env.game.direction2
     
     def _create_buttons(self) -> Dict[str, Dict[str, Any]]:
         """创建UI按钮"""
@@ -132,6 +137,10 @@ class SnakeGUI:
         self.last_update = time.time()
         self.paused = False
         self.buttons['pause']['text'] = 'Pause'
+        self.player_direction = self.env.game.direction1
+        self.ai_direction = self.env.game.direction2
+        # === AI助手修改: 移除move_pending，支持蛇持续移动 ===
+        # self.move_pending = False
     
     def handle_events(self) -> bool:
         """处理事件"""
@@ -195,77 +204,58 @@ class SnakeGUI:
         
         if key in key_to_action:
             action = key_to_action[key]
-            self._make_move(action)
-    
-    def _make_move(self, action):
-        """执行移动"""
-        if self.game_over or self.paused:
-            return
-        
-        try:
-            # 执行动作
-            observation, reward, terminated, truncated, info = self.env.step(action)
-            
-            # 检查游戏是否结束
-            if terminated or truncated:
-                self.game_over = True
-                self.winner = self.env.get_winner()
-            else:
-                # 切换玩家
-                self._switch_player()
-        
-        except Exception as e:
-            print(f"Move execution failed: {e}")
-    
-    def _switch_player(self):
-        """切换玩家"""
-        if isinstance(self.current_agent, HumanAgent):
-            self.current_agent = self.ai_agent
-            self.thinking = True
-        else:
-            self.current_agent = self.human_agent
+            self.player_direction = action  # 只更新方向
+            # === AI助手修改: 不再设置move_pending，按键只改变方向 ===
     
     def update_game(self):
         """更新游戏状态"""
         if self.game_over or self.paused:
             return
-        
+
         current_time = time.time()
-        
-        # 检查是否需要更新
         if current_time - self.last_update < self.update_interval:
             return
-        
+
         self.last_update = current_time
-        
-        # AI回合
-        if (not isinstance(self.current_agent, HumanAgent) and self.thinking):
-            try:
+
+        # === AI助手修改: 玩家蛇和AI蛇每帧都持续移动，按键只改变方向 ===
+        if hasattr(self.env.game, 'step_single'):
+            # AI每帧都决策
+            if self.env.game.alive2:
                 observation = self.env._get_observation()
-                action = self.current_agent.get_action(observation, self.env)
-                
-                if action:
-                    self._make_move(action)
-                
-                self.thinking = False
-                
-            except Exception as e:
-                print(f"AI thinking failed: {e}")
-                self.thinking = False
-        
-        # 人类玩家回合 - 贪吃蛇需要持续移动
-        elif isinstance(self.current_agent, HumanAgent) and not self.thinking:
-            # 获取当前方向并继续移动
-            current_direction = None
-            if self.env.game.current_player == 1:
-                current_direction = self.env.game.direction1
-            else:
-                current_direction = self.env.game.direction2
-            
-            # 直接使用当前方向
-            action = current_direction
-            self._make_move(action)
-    
+                ai_action = self.ai_agent.get_action(observation, self.env)
+                if ai_action is not None:
+                    self.ai_direction = ai_action
+            player_dir = self.player_direction if self.player_direction is not None else self.env.game.direction1
+            ai_dir = self.ai_direction if self.ai_direction is not None else self.env.game.direction2
+            observation, reward1, reward2, done, info = self.env.step(player_dir, ai_dir)
+            # 胜负判定
+            if len(self.env.game.snake1) >= self.victory_length and self.env.game.alive1:
+                self.game_over = True
+                self.winner = 1
+            elif len(self.env.game.snake2) >= self.victory_length and self.env.game.alive2:
+                self.game_over = True
+                self.winner = 2
+            elif not self.env.game.alive2 and self.env.game.alive1:
+                self.game_over = True
+                self.winner = 1
+            elif not self.env.game.alive1 and self.env.game.alive2:
+                self.game_over = True
+                self.winner = 2
+            elif done:
+                self.game_over = True
+                winner = self.env.get_winner()
+                self.winner = winner if winner is not None else 0
+        else:
+            # GomokuGame: 只需一个动作
+            result = self.env.step(self.player_direction)
+            # 只取前4个返回值，兼容5元组和4元组
+            observation, reward, done, info = result[:4]
+            if done:
+                self.game_over = True
+                winner = self.env.game.get_winner() if hasattr(self.env.game, 'get_winner') else None
+                self.winner = winner if winner is not None else 0
+
     def draw(self):
         """绘制游戏界面"""
         # 清空屏幕
@@ -284,7 +274,7 @@ class SnakeGUI:
         pygame.display.flip()
     
     def _draw_snake_game(self):
-        """绘制贪吃蛇游戏"""
+        """绘制贪吃蛇或棋盘游戏"""
         # 绘制游戏区域背景
         game_rect = pygame.Rect(
             self.margin, 
@@ -294,53 +284,46 @@ class SnakeGUI:
         )
         pygame.draw.rect(self.screen, COLORS['LIGHT_GRAY'], game_rect)
         pygame.draw.rect(self.screen, COLORS['BLACK'], game_rect, 2)
-        
         # 绘制网格
         for i in range(self.board_size + 1):
-            # 垂直线
             x = self.margin + i * self.cell_size
             pygame.draw.line(self.screen, COLORS['GRAY'], 
                            (x, self.margin), 
                            (x, self.margin + self.board_size * self.cell_size), 1)
-            # 水平线
             y = self.margin + i * self.cell_size
             pygame.draw.line(self.screen, COLORS['GRAY'], 
                            (self.margin, y), 
                            (self.margin + self.board_size * self.cell_size, y), 1)
-        
-        # 绘制游戏元素
-        state = self.env.game.get_state()
-        board = state['board']
-        
+        # 统一获取棋盘
+        board = self.env.game.board
         for row in range(self.board_size):
             for col in range(self.board_size):
                 if board[row, col] != 0:
                     x = self.margin + col * self.cell_size + 2
                     y = self.margin + row * self.cell_size + 2
                     rect = pygame.Rect(x, y, self.cell_size - 4, self.cell_size - 4)
-                    
-                    if board[row, col] == 1:  # 蛇1头部
-                        pygame.draw.rect(self.screen, COLORS['BLUE'], rect)
-                        # 绘制眼睛
-                        eye_size = 3
-                        pygame.draw.circle(self.screen, COLORS['WHITE'], 
-                                         (x + 6, y + 6), eye_size)
-                        pygame.draw.circle(self.screen, COLORS['WHITE'], 
-                                         (x + self.cell_size - 10, y + 6), eye_size)
-                    elif board[row, col] == 2:  # 蛇1身体
-                        pygame.draw.rect(self.screen, COLORS['CYAN'], rect)
-                    elif board[row, col] == 3:  # 蛇2头部
-                        pygame.draw.rect(self.screen, COLORS['RED'], rect)
-                        # 绘制眼睛
-                        eye_size = 3
-                        pygame.draw.circle(self.screen, COLORS['WHITE'], 
-                                         (x + 6, y + 6), eye_size)
-                        pygame.draw.circle(self.screen, COLORS['WHITE'], 
-                                         (x + self.cell_size - 10, y + 6), eye_size)
-                    elif board[row, col] == 4:  # 蛇2身体
-                        pygame.draw.rect(self.screen, COLORS['ORANGE'], rect)
-                    elif board[row, col] == 5:  # 食物
-                        pygame.draw.ellipse(self.screen, COLORS['GREEN'], rect)
+                    # SnakeGame绘制
+                    if hasattr(self.env.game, 'step_single'):
+                        if board[row, col] == 1:  # 蛇1头部
+                            pygame.draw.rect(self.screen, COLORS['BLUE'], rect)
+                            eye_size = 3
+                            pygame.draw.circle(self.screen, COLORS['WHITE'], (x + 6, y + 6), eye_size)
+                            pygame.draw.circle(self.screen, COLORS['WHITE'], (x + self.cell_size - 10, y + 6), eye_size)
+                        elif board[row, col] == 2:  # 蛇1身体
+                            pygame.draw.rect(self.screen, COLORS['CYAN'], rect)
+                        elif board[row, col] == 3:  # 蛇2头部
+                            pygame.draw.rect(self.screen, COLORS['RED'], rect)
+                            eye_size = 3
+                            pygame.draw.circle(self.screen, COLORS['WHITE'], (x + 6, y + 6), eye_size)
+                            pygame.draw.circle(self.screen, COLORS['WHITE'], (x + self.cell_size - 10, y + 6), eye_size)
+                        elif board[row, col] == 4:  # 蛇2身体
+                            pygame.draw.rect(self.screen, COLORS['ORANGE'], rect)
+                        elif board[row, col] == 5:  # 食物
+                            pygame.draw.ellipse(self.screen, COLORS['GREEN'], rect)
+                    else:
+                        # GomokuGame绘制
+                        color = COLORS['BLUE'] if board[row, col] == 1 else COLORS['RED']
+                        pygame.draw.circle(self.screen, color, rect.center, self.cell_size // 2 - 4)
     
     def _draw_ui(self):
         """绘制UI界面"""
@@ -377,50 +360,40 @@ class SnakeGUI:
     def _draw_game_status(self):
         """绘制游戏状态"""
         start_x = self.board_size * self.cell_size + self.margin + 20
-        status_y = 450
-        
+        status_y = 470  # Move down to avoid overlap
+        # Victory condition in English
+        victory_text = f"Victory: Reach length {self.victory_length} or opponent dies"
+        victory_surface = self.font_small.render(victory_text, True, COLORS['BLACK'])
+        self.screen.blit(victory_surface, (start_x, status_y - 60))
         if self.paused:
             status_text = "Game Paused"
             color = COLORS['ORANGE']
         elif self.game_over:
             if self.winner == 1:
-                status_text = "You Win!"
+                status_text = "You Win! (Blue Snake)"
                 color = COLORS['GREEN']
             elif self.winner == 2:
-                status_text = "AI Wins!"
+                status_text = "AI Wins! (Red Snake)"
                 color = COLORS['RED']
             else:
                 status_text = "Draw!"
                 color = COLORS['ORANGE']
         else:
-            if isinstance(self.current_agent, HumanAgent):
-                status_text = "Your Turn"
-                color = COLORS['BLUE']
-            else:
-                if self.thinking:
-                    status_text = "AI Thinking..."
-                    color = COLORS['ORANGE']
-                else:
-                    status_text = "AI Turn"
-                    color = COLORS['RED']
-        
+            status_text = "Game Running"
+            color = COLORS['BLUE']
         text_surface = self.font_large.render(status_text, True, color)
         self.screen.blit(text_surface, (start_x, status_y))
-        
-        # 游戏信息
+        # Game info
         info_y = status_y + 40
         state = self.env.game.get_state()
         len1 = len(state['snake1']) if state['alive1'] else 0
         len2 = len(state['snake2']) if state['alive2'] else 0
         alive1 = "Alive" if state['alive1'] else "Dead"
         alive2 = "Alive" if state['alive2'] else "Dead"
-        
         player_info = f"You: {len1} ({alive1})"
         ai_info = f"AI: {len2} ({alive2})"
-        
         info_surface = self.font_small.render(player_info, True, COLORS['BLUE'])
         self.screen.blit(info_surface, (start_x, info_y))
-        
         info_surface2 = self.font_small.render(ai_info, True, COLORS['RED'])
         self.screen.blit(info_surface2, (start_x, info_y + 20))
     
