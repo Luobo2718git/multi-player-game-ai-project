@@ -180,3 +180,18 @@ class GomokuGame(BaseGame):
     def get_legal_moves(self) -> List[Tuple[int, int]]:
         """获取合法移动（别名）"""
         return self.get_valid_actions() 
+    
+    def get_game_info(self):
+        """获取五子棋游戏信息"""
+        return {
+            'board_size': self.board_size,
+            'win_length': self.win_length,
+            'current_player': getattr(self, 'current_player', 1),
+            'game_state': getattr(self, 'game_state', None),
+            'move_count': getattr(self, 'move_count', 0),
+            'board': self.board.copy()
+        }
+    
+    def update_game_state(self):
+        """兼容BaseEnv，五子棋无需额外状态更新"""
+        pass 
