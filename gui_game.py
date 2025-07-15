@@ -153,6 +153,14 @@ class MultiGameGUI:
 
         return buttons
 
+    # === 新增：AI按钮与AI类名映射 ===
+    AI_BUTTON_TO_CLASS = {
+        "random_ai": "RandomBot",
+        "minimax_ai": "MinimaxBot",
+        "mcts_ai": "MCTSBot"
+    }
+    AI_CLASS_TO_BUTTON = {v: k for k, v in AI_BUTTON_TO_CLASS.items()}
+
     def _switch_game(self, game_type):
         """切换游戏类型"""
         self.current_game = game_type
@@ -182,13 +190,13 @@ class MultiGameGUI:
             self.ai_agent = RandomBot(name="Random AI", player_id=2)
         elif self.selected_ai == "MinimaxBot":
             if self.current_game == "gomoku":
-                self.ai_agent = MinimaxBot(name="Minimax AI", player_id=2, max_depth=3)
+                self.ai_agent = MinimaxBot(name="Minimax AI", player_id=2, search_depth=1)  # 降低深度
             else:
                 self.ai_agent = SnakeAI(name="Snake AI", player_id=2)
         elif self.selected_ai == "MCTSBot":
             if self.current_game == "gomoku":
                 self.ai_agent = MCTSBot(
-                    name="MCTS AI", player_id=2, simulation_count=300
+                    name="MCTS AI", simulation_count=50
                 )
             else:
                 self.ai_agent = SmartSnakeAI(name="Smart Snake AI", player_id=2)
@@ -259,23 +267,15 @@ class MultiGameGUI:
                 elif button_name in ["gomoku_game", "snake_game"]:
                     game_type = button_name.split("_")[0]
                     self._switch_game(game_type)
-                elif button_name.endswith("_ai"):
-                    # 更新选中的AI
-                    old_ai = f"{self.selected_ai.lower()}_ai"
-                    if old_ai in self.buttons:
-                        self.buttons[old_ai]["color"] = COLORS["LIGHT_GRAY"]
-
-                    if button_name == "random_ai":
-                        self.selected_ai = "RandomBot"
-                    elif button_name == "minimax_ai":
-                        self.selected_ai = "MinimaxBot"
-                    elif button_name == "mcts_ai":
-                        self.selected_ai = "MCTSBot"
-
+                elif button_name in self.AI_BUTTON_TO_CLASS:
+                    # === 修复：AI按钮高亮与AI类型切换一致 ===
+                    old_btn = self.AI_CLASS_TO_BUTTON.get(self.selected_ai)
+                    if old_btn and old_btn in self.buttons:
+                        self.buttons[old_btn]["color"] = COLORS["LIGHT_GRAY"]
+                    self.selected_ai = self.AI_BUTTON_TO_CLASS[button_name]
                     self.buttons[button_name]["color"] = COLORS["YELLOW"]
                     self._create_ai_agent()
                     self.reset_game()
-
                 return True
         return False
 
@@ -359,8 +359,13 @@ class MultiGameGUI:
         if not isinstance(self.current_agent, HumanAgent) and self.thinking:
             try:
                 # 获取AI动作
-                observation = self.env._get_observation()
-                action = self.current_agent.get_action(observation, self.env)
+                if isinstance(self.ai_agent, MinimaxBot) and self.current_game == "gomoku":
+                    action = self.ai_agent.get_action(self.env.get_board_state(), 2)
+                elif isinstance(self.ai_agent, MCTSBot) and self.current_game == "gomoku":
+                    action = self.ai_agent.get_action(self.env, 2)
+                else:
+                    observation = self.env._get_observation()
+                    action = self.current_agent.get_action(observation, self.env)
 
                 if action:
                     self._make_move(action)
