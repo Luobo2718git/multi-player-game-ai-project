@@ -22,11 +22,22 @@ class BaseGame(ABC):
         self.history = []  # 游戏历史记录
         
         #self.reset()
+
+         # 新增或修改此方法
+    def _reset_game(self):
+        """
+        内部重置逻辑，初始化游戏的基本状态。
+        子类应调用 super()._reset_game() 来执行此基础重置。
+        """
+        self.current_moves = 0
+        # 其他通用的重置逻辑可以在这里添加
+    
     
     @abstractmethod
     def reset(self) -> Dict[str, Any]:
         """重置游戏状态"""
         pass
+
     
     @abstractmethod
     def step(self, action: Any) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:

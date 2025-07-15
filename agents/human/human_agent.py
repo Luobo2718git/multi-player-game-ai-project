@@ -4,7 +4,7 @@
 """
 
 import time
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, Union
 from ..base_agent import BaseAgent
 
 
@@ -154,3 +154,88 @@ class HumanAgent(BaseAgent):
             'description': '人类玩家，通过键盘输入进行游戏'
         })
         return info 
+    
+class bombHumanAgent(BaseAgent):
+    """Bomb游戏的人类智能体"""
+    
+    """
+    人类玩家智能体，通过键盘输入控制。
+    """
+    def __init__(self, name="Human", player_id=1):
+        super().__init__(name, player_id)
+        self.action: Optional[Union[Tuple[int, int], Tuple[int, int, bool]]] = (0, 0) # 默认不动
+        self.last_action_time = time.time()
+        self.action_delay = 0.1 # 限制按键频率，防止过快输入
+
+    def set_action(self, action: Union[Tuple[int, int], Tuple[int, int, bool]]):
+        """外部设置动作（例如通过GUI的事件处理）"""
+        current_time = time.time()
+        if current_time - self.last_action_time > self.action_delay:
+            self.action = action
+            self.last_action_time = current_time
+
+    def get_action(self, observation: Dict[str, Any], env: Any) -> Union[Tuple[int, int], Tuple[int, int, bool]]:
+        """
+        获取人类玩家的动作。
+        这个方法主要用于返回通过 set_action 设置的动作。
+        """
+        # 在这里可以添加一些调试信息或游戏状态显示
+        # self._display_game_state(observation, env) # 暂时注释掉，避免在每次get_action时都尝试渲染
+
+        # 获取并返回当前设置的动作，然后重置为默认不动，等待下一次输入
+        current_action = self.action
+        self.action = (0, 0) # 重置为默认不动，防止连续执行
+        return current_action
+
+    def reset(self):
+        """重置玩家状态"""
+        self.action = (0, 0)
+        self.last_action_time = time.time()
+
+    def _display_game_state(self, observation: Dict[str, Any], env: Any):
+        """
+        在控制台显示简化版游戏状态 (仅用于调试)
+        注意: 在实际Pygame GUI中，这部分逻辑应由GUI类处理
+        """
+        # 仅在调试时使用，避免与Pygame GUI冲突
+        # print("\n--- 游戏状态 ---")
+        # board = observation['board']
+        # for r in range(board.shape[0]):
+        #     row_str = ""
+        #     for c in range(board.shape[1]):
+        #         val = board[r, c]
+        #         if (r, c) == observation['player1_pos']:
+        #             row_str += "P1 "
+        #         elif (r, c) == observation['player2_pos']:
+        #             row_str += "P2 "
+        #         elif val == BombGame.WALL:
+        #             row_str += "## "
+        #         elif val == BombGame.DESTRUCTIBLE_BLOCK:
+        #             row_str += "DB "
+        #         elif val >= BombGame.BOMB_START_ID and val < BombGame.EXPLOSION:
+        #             row_str += f"B{val - BombGame.BOMB_START_ID} "
+        #         elif val == BombGame.EXPLOSION:
+        #             row_str += "XX "
+        #         elif val == BombGame.EMPTY:
+        #             row_str += ".  "
+        #         elif val >= BombGame.ITEM_BOMB_UP: # 物品
+        #             item_map = {
+        #                 BombGame.ITEM_BOMB_UP: "B+",
+        #                 BombGame.ITEM_RANGE_UP: "R+",
+        #                 BombGame.ITEM_SHIELD: "S ",
+        #                 BombGame.ITEM_SQUARE_RANGE_UP: "SQ"
+        #             }
+        #             row_str += f"{item_map.get(val, '??')} "
+        #         else:
+        #             row_str += f"{val:2d} "
+        #     print(row_str)
+        
+        # 获取有效动作时，传入 player_id
+        valid_actions = env.get_valid_actions(self.player_id) # <--- 关键修改在这里
+        # print(f"有效动作 ({self.name}): {valid_actions}")
+        # print(f"当前玩家位置: {observation['player1_pos'] if self.player_id == 1 else observation['player2_pos']}")
+        # print(f"玩家 {self.player_id} 存活: {observation['alive1'] if self.player_id == 1 else observation['alive2']}")
+        # if self.player_id == 1:
+        #     print(f"P1 炸弹数: {observation['player1_current_bombs']}/{observation['player1_bombs_max']}, 范围: {observation['player1_range']}, 护盾: {observation['player1_shield_active']}")
+        # else:
+        #     print(f"P2 炸弹数: {observation['player2_current_bombs']}/{observation['player2_bombs_max']}, 范围: {observation['player2_range']}, 护盾: {observation['player2_shield_active']}")

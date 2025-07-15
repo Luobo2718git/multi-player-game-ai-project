@@ -32,6 +32,12 @@ GAME_CONFIGS = {
         'tiles_per_hand': 13,
         'timeout': 120,
         'max_rounds': 100,
+    },
+    'bomb': {
+        'board_size': 15,
+        'max_bombs': 3,
+        'timeout': 60,  # 秒
+        'max_moves': 1000,  # 最大回合数
     }
 }
 
@@ -55,6 +61,11 @@ AI_CONFIGS = {
     },
     'behavior_tree': {
         'max_depth': 10,
+        'timeout': 5,
+    },
+    'bomb_ai': {
+        'max_depth': 3,
+        'use_alpha_beta': True,
         'timeout': 5,
     }
 }
@@ -112,3 +123,13 @@ class ActionType:
     PASS = 'pass'        # 跳过回合
     RESIGN = 'resign'    # 认输
     DRAW = 'draw'        # 请求和棋 
+
+
+# 游戏奖励定义
+REWARDS = {
+    'win': 100,         # 获胜奖励
+    'lose': -100,       # 失败惩罚
+    'draw': 0,          # 平局奖励
+    'alive_step': 0.1,  # 每存活一步的奖励
+    'death': -50        # 死亡惩罚
+}
