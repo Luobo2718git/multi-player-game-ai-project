@@ -362,7 +362,7 @@ class MultiGameGUI:
                 if isinstance(self.ai_agent, MinimaxBot) and self.current_game == "gomoku":
                     action = self.ai_agent.get_action(self.env.get_board_state(), 2)
                 elif isinstance(self.ai_agent, MCTSBot) and self.current_game == "gomoku":
-                    action = self.ai_agent.get_action(self.env, 2)
+                    action = self.ai_agent.get_action(None, self.env)
                 else:
                     observation = self.env._get_observation()
                     action = self.current_agent.get_action(observation, self.env)
