@@ -14,8 +14,19 @@ class MinimaxBot:
         """
         综合防守优先、动态深度、时间控制和alpha-beta剪枝的主入口
         """
+        # 兼容observation为dict或ndarray
+        if isinstance(board, dict):
+            if 'board' in board:
+                board = board['board']
+            else:
+                raise ValueError('Observation dict missing "board" key')
         self.start_time = time.time()
-        opponent = 3 - player
+        # 兼容player为int或env对象
+        if hasattr(player, 'game') and hasattr(player.game, 'current_player'):
+            player_id = player.game.current_player
+        else:
+            player_id = player
+        opponent = 3 - player_id
         candidates = self.get_candidate_moves(board)
         # 动态深度调整：候选点多时自动降低深度
         if len(candidates) > 12:
@@ -44,8 +55,8 @@ class MinimaxBot:
         beta = float('inf')
         for move in candidates:
             new_board = board.copy()
-            new_board[move[0], move[1]] = player
-            score = self.alphabeta(new_board, search_depth-1, False, player, alpha, beta)
+            new_board[move[0], move[1]] = player_id
+            score = self.alphabeta(new_board, search_depth-1, False, player_id, alpha, beta)
             if score > best_score:
                 best_score = score
                 best_move = move
