@@ -1,7 +1,3 @@
-"""
-贪吃蛇游戏逻辑（简化版）
-"""
-
 import numpy as np
 import random
 from typing import Dict, List, Tuple, Any, Optional
@@ -89,11 +85,28 @@ class SnakeGame(BaseGame):
         old_alive1 = self.alive1
         old_alive2 = self.alive2
 
-        # 更新方向
+        # === 修改开始 ===
+        # 更新方向：检查是否是反向移动，如果是则忽略
         if self.alive1:
-            self.direction1 = action1
+            # 只有当蛇的长度大于1时才限制180度掉头
+            if len(self.snake1) > 1 and \
+               action1[0] == -self.direction1[0] and \
+               action1[1] == -self.direction1[1]:
+                # 忽略反向动作，保持当前方向
+                pass 
+            else:
+                self.direction1 = action1
+        
         if self.alive2:
-            self.direction2 = action2
+            # 只有当蛇的长度大于1时才限制180度掉头
+            if len(self.snake2) > 1 and \
+               action2[0] == -self.direction2[0] and \
+               action2[1] == -self.direction2[1]:
+                # 忽略反向动作，保持当前方向
+                pass 
+            else:
+                self.direction2 = action2
+        # === 修改结束 ===
 
         # 同时移动两条蛇
         grow1, grow2 = 0, 0
@@ -327,6 +340,9 @@ class SnakeGame(BaseGame):
             return 0 # 未吃到食物
         
         # 检查自身碰撞
+        # 注意：这里 new_head in snake 会检测到蛇身，包括直接掉头的情况
+        # 但由于我们在step方法中已经处理了方向，这里不会发生因直接掉头而撞到自身的逻辑
+        # 如果 new_head 是蛇的第二个位置，通常意味着掉头，但现在已在step中规避
         if new_head in snake:
             if player == 1:
                 self.alive1 = False
@@ -399,4 +415,4 @@ class SnakeGame(BaseGame):
                 return -1.0
             elif old_alive and not self.alive1:
                 return 1.0
-        return 0.0 
+        return 0.0
