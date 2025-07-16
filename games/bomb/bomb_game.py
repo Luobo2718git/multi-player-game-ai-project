@@ -361,70 +361,120 @@ class BombGame(BaseGame):
         explosion_cells.add(bomb_pos) # 炸弹中心
 
         directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # 右，左，下，上
-            
-        for dr, dc in directions:
-            for i in range(1, bomb_range + 1):
-                exp_pos = (bomb_pos[0] + dr * i, bomb_pos[1] + dc * i)
-                if not self._is_valid_position(exp_pos):
-                    break # 超出边界
+        
+        if bomb_range_type == 'cross':
+            for dr, dc in directions:
+                for i in range(1, bomb_range + 1):
+                    exp_pos = (bomb_pos[0] + dr * i , bomb_pos[1] + dc * i)
+                    if not self._is_valid_position(exp_pos):
+                        break # 超出边界
 
-                cell_type = self._board[exp_pos] # 使用 _board
-                
-                # 检查这个位置是否有不可破坏的墙
-                if cell_type == self.WALL:
-                    break # 遇到不可破坏的墙，爆炸停止
+                    cell_type = self._board[exp_pos] # 使用 _board
+                    
+                    # 检查这个位置是否有不可破坏的墙
+                    if cell_type == self.WALL:
+                        break # 遇到不可破坏的墙，爆炸停止
 
-                explosion_cells.add(exp_pos)
-                
-                if bomb_range_type == 'square':
-                    for r in range(-bomb_range, bomb_range + 1):
-                        for c in range(-bomb_range, bomb_range + 1):
-                            square_pos = (bomb_pos[0] + r, bomb_pos[1] + c)
-                            if self._is_valid_position(square_pos):
-                                explosion_cells.add(square_pos)
-                            square_pos = (bomb_pos[0] - r, bomb_pos[1] - c)
-                            if self._is_valid_position(square_pos):
-                                explosion_cells.add(square_pos)
+                    explosion_cells.add(exp_pos)
+                    
 
-                if cell_type == self.DESTRUCTIBLE_BLOCK:
-                    # 添加：销毁方块时增加分数
-                    if bomb_owner == 1:
-                        self.player1_score += 1
-                    else:
-                        self.player2_score += 1
+                    if cell_type == self.DESTRUCTIBLE_BLOCK:
+                        # 添加：销毁方块时增加分数
+                        if bomb_owner == 1:
+                            self.player1_score += 1
+                        else:
+                            self.player2_score += 1
 
-                    # 如果是十字形爆炸，遇到可破坏方块就停止传播
-                    if bomb_range_type == 'cross':
-                        self._board[exp_pos] = self.EXPLOSION # 使用 _board
-                        # 有几率生成物品
-                        if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
-                            item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
-                            self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
-                            # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
+                        # 如果是十字形爆炸，遇到可破坏方块就停止传播
+                        if bomb_range_type == 'cross':
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            # 有几率生成物品
+                            if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
+                                item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
+                                self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
+                                # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
+                            self._board[exp_pos] = self.EXPLOSION # 暂时显示爆炸 # 使用 _board
+                            break # 遇到可破坏的方块，爆炸停止传播
+                        elif bomb_range_type == 'square':
+                            # 方形爆炸：破坏方块，但继续传播
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
+                                item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
+                                self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
+                                # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            # 不break，继续传播
+
+                    # 如果遇到其他炸弹，也引爆
+                    # 遍历bombs列表，而不是board上的值，因为board上的值是炸弹倒计时
+                    for other_bomb in self.bombs:
+                        if other_bomb['pos'] == exp_pos and other_bomb['timer'] > 1: # 避免无限递归，只引爆未立即爆炸的炸弹
+                            other_bomb['timer'] = 1 # 将其设置为立即爆炸
+                            break
+                    
+                    # 如果是空地或者物品，继续传播，并标记为爆炸
+                    # 我们不需要在这里检查ITEM_BOMB_UP等，因为物品现在是单独处理的
+                    # 并且将由GUI在顶部绘制。
+                    if cell_type == self.EMPTY or cell_type == self.PLAYER1 or cell_type == self.PLAYER2:
                         self._board[exp_pos] = self.EXPLOSION # 暂时显示爆炸 # 使用 _board
-                        break # 遇到可破坏的方块，爆炸停止传播
-                    elif bomb_range_type == 'square':
-                        # 方形爆炸：破坏方块，但继续传播
-                        self._board[exp_pos] = self.EXPLOSION # 使用 _board
-                        if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
-                            item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
-                            self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
-                            # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
-                        self._board[exp_pos] = self.EXPLOSION # 使用 _board
-                        # 不break，继续传播
+        
+        elif bomb_range_type == 'square':
+            for dx in range(-bomb_range, bomb_range + 1):
+                for dy in range(-bomb_range, bomb_range + 1):
+                    exp_pos = (bomb_pos[0] + dx , bomb_pos[1] + dy)
+                    if not self._is_valid_position(exp_pos):
+                        continue # 超出边界
 
-                # 如果遇到其他炸弹，也引爆
-                # 遍历bombs列表，而不是board上的值，因为board上的值是炸弹倒计时
-                for other_bomb in self.bombs:
-                    if other_bomb['pos'] == exp_pos and other_bomb['timer'] > 1: # 避免无限递归，只引爆未立即爆炸的炸弹
-                        other_bomb['timer'] = 1 # 将其设置为立即爆炸
-                        break
-                
-                # 如果是空地或者物品，继续传播，并标记为爆炸
-                # 我们不需要在这里检查ITEM_BOMB_UP等，因为物品现在是单独处理的
-                # 并且将由GUI在顶部绘制。
-                if cell_type == self.EMPTY or cell_type == self.PLAYER1 or cell_type == self.PLAYER2:
-                    self._board[exp_pos] = self.EXPLOSION # 暂时显示爆炸 # 使用 _board
+                    cell_type = self._board[exp_pos] # 使用 _board
+                    
+                    # 检查这个位置是否有不可破坏的墙
+                    # if cell_type == self.WALL:
+                    #     break # 遇到不可破坏的墙，爆炸停止
+
+                    explosion_cells.add(exp_pos)
+                    
+
+                    if cell_type == self.DESTRUCTIBLE_BLOCK:
+                        # 添加：销毁方块时增加分数
+                        if bomb_owner == 1:
+                            self.player1_score += 1
+                        else:
+                            self.player2_score += 1
+
+                        # 如果是十字形爆炸，遇到可破坏方块就停止传播
+                        if bomb_range_type == 'cross':
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            # 有几率生成物品
+                            if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
+                                item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
+                                self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
+                                # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
+                            self._board[exp_pos] = self.EXPLOSION # 暂时显示爆炸 # 使用 _board
+                            break # 遇到可破坏的方块，爆炸停止传播
+                        elif bomb_range_type == 'square':
+                            # 方形爆炸：破坏方块，但继续传播
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            if random.random() < self.item_spawn_chance: # 修改：使用更新后的物品生成几率
+                                item_type = random.choice([self.ITEM_BOMB_UP, self.ITEM_RANGE_UP, self.ITEM_SHIELD, self.ITEM_SQUARE_RANGE_UP])
+                                self.items.append({'pos': exp_pos, 'type': item_type}) # 修改：将物品存储为字典
+                                # 不要在这里将_board[exp_pos]设置为物品类型，让_update_explosions在爆炸计时器之后处理
+                            self._board[exp_pos] = self.EXPLOSION # 使用 _board
+                            # 不break，继续传播
+
+                    # 如果遇到其他炸弹，也引爆
+                    # 遍历bombs列表，而不是board上的值，因为board上的值是炸弹倒计时
+                    for other_bomb in self.bombs:
+                        if other_bomb['pos'] == exp_pos and other_bomb['timer'] > 1: # 避免无限递归，只引爆未立即爆炸的炸弹
+                            other_bomb['timer'] = 1 # 将其设置为立即爆炸
+                            break
+                    
+                    # 如果是空地或者物品，继续传播，并标记为爆炸
+                    # 我们不需要在这里检查ITEM_BOMB_UP等，因为物品现在是单独处理的
+                    # 并且将由GUI在顶部绘制。
+                    if cell_type == self.EMPTY or cell_type == self.PLAYER1 or cell_type == self.PLAYER2:
+                        self._board[exp_pos] = self.EXPLOSION # 暂时显示爆炸 # 使用 _board
+                    
+
 
         # 将爆炸区域加入爆炸列表，用于定时清除
         for exp_pos in explosion_cells:

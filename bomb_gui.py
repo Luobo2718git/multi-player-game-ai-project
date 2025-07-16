@@ -328,8 +328,8 @@ class GameGUI:
         range_type2 = f"范围: {'方形' if self.observation['player2_range_type'] == 'square' else '十字'}"
         score2 = self.observation['player2_score'] # 获取玩家2分数
 
-        player_info = f"Player1     :  炸弹数量: {bombs1}  范围: {range1}  类型：{range_type1} {shield1} 分数: {score1} "
-        ai_info = f"Player2(AI):  炸弹数量: {bombs2}  范围: {range2}  类型：{range_type2} {shield2} 分数: {score2} "
+        player_info = f"  Player1        :  炸弹数量: {bombs1}  范围: {range1}  类型：{range_type1} {shield1} 分数: {score1} "
+        ai_info = f"  Player2(AI):  炸弹数量: {bombs2}  范围: {range2}  类型：{range_type2} {shield2} 分数: {score2} "
 
         info_surface = self.font_medium.render(player_info, True, COLORS['BLUE'])
         self.screen.blit(info_surface, (start_x, info_y))
