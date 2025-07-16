@@ -684,7 +684,7 @@ class MultiGameGUI:
 
         # 绘制胜利条件到右侧按钮区下方
         if self.current_game == "snake":
-            victory_text = f"胜利条件：蛇长度达到{self.victory_length}或对方死亡"
+            victory_text = f"胜利条件：蛇长度达到20或对方死亡"
             victory_surface = self.font_small.render(victory_text, True, COLORS["BLACK"])
             # 右下角坐标
             right_x = self.window_width - victory_surface.get_width() - 20

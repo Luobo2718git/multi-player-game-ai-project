@@ -177,10 +177,10 @@ class SnakeGame(BaseGame):
     
     def get_winner(self) -> Optional[int]:
         """获取获胜者"""
-        # 先判断是否有一方长度达到15
-        if len(self.snake1) >= 15 and self.alive1:
+        # 先判断是否有一方长度达到20
+        if len(self.snake1) >= 20 and self.alive1:
             return 1
-        if len(self.snake2) >= 15 and self.alive2:
+        if len(self.snake2) >= 20 and self.alive2:
             return 2
         # 再判断死亡
         if not self.alive1 and self.alive2:
@@ -328,8 +328,8 @@ class SnakeGame(BaseGame):
         # 如果有一方死亡，游戏结束
         if not self.alive1 or not self.alive2:
             return True
-        # 如果有一方长度达到15，游戏结束
-        if len(self.snake1) >= 15 or len(self.snake2) >= 15:
+        # 如果有一方长度达到20，游戏结束
+        if len(self.snake1) >= 20 or len(self.snake2) >= 20:
             return True
         return False
     
