@@ -360,11 +360,7 @@ class BombGame(BaseGame):
         explosion_cells = set()
         explosion_cells.add(bomb_pos) # 炸弹中心
 
-        if bomb_range_type == 'cross':
-            directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # 右，左，下，上
-        elif bomb_range_type == 'square':
-            directions = [(0, 1), (0, -1), (1, 0), (-1, 0), 
-                          (1, 1), (1, -1), (-1, 1), (-1, -1)]
+        directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # 右，左，下，上
             
         for dr, dc in directions:
             for i in range(1, bomb_range + 1):
@@ -379,6 +375,16 @@ class BombGame(BaseGame):
                     break # 遇到不可破坏的墙，爆炸停止
 
                 explosion_cells.add(exp_pos)
+                
+                if bomb_range_type == 'square':
+                    for r in range(-bomb_range, bomb_range + 1):
+                        for c in range(-bomb_range, bomb_range + 1):
+                            square_pos = (bomb_pos[0] + r, bomb_pos[1] + c)
+                            if self._is_valid_position(square_pos):
+                                explosion_cells.add(square_pos)
+                            square_pos = (bomb_pos[0] - r, bomb_pos[1] - c)
+                            if self._is_valid_position(square_pos):
+                                explosion_cells.add(square_pos)
 
                 if cell_type == self.DESTRUCTIBLE_BLOCK:
                     # 添加：销毁方块时增加分数

@@ -3,35 +3,35 @@ import numpy as np
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Tuple, Any, Optional, Union
 from collections import deque
-from games.bomb.bomb_game import BombGame # Import BombGame to access its constants
+from games.bomb.bomb_game import BombGame # 导入BombGame，用于访问其常量
 
 class BombAI(BaseAgent):
-    """Bomberman AI Agent"""
+    """泡泡堂AI智能体"""
     
-    def __init__(self, name="BombAI", player_id=2): # Default to Player 2
+    def __init__(self, name="BombAI", player_id=2): # 默认为玩家2
         super().__init__(name, player_id)
-        self._move_delay_counter = 0 # Counter to control movement frequency
-        self._move_delay_ticks = 2 # AI moves once every 5 ticks
+        self._move_delay_counter = 0 # 控制移动频率的计数器
+        self._move_delay_ticks = 2 # AI每2个游戏帧移动一次
 
     def get_action(self, observation: Dict[str, Any], env: Any) -> Union[Tuple[int, int], Tuple[int, int, bool]]:
         """
-        Get action.
-        Observation contains the full state of the game.
-        Env provides methods to get valid actions and game information.
+        获取动作。
+        observation 包含游戏的完整状态。
+        env 提供了获取有效动作和游戏信息的方法。
         """
-        # Increment the move delay counter
-        self._move_delay_counter += 1
+        # 增加移动延迟计数器
+        self._move_delay_counter = random.randint(1, 3) # 随机增加1-3个计数器值，模拟AI思考时间
 
-        # If it's not time to move, return a no-op action
+        # 如果未到移动时间，返回不操作动作
         if self._move_delay_counter % self._move_delay_ticks != 0:
-            return (0, 0) # Stay in place
+            return (0, 0) # 保持原地不动
 
-        # Reset the counter after taking an action
+        # 执行动作后重置计数器
         self._move_delay_counter = 0
 
         valid_actions = env.get_valid_actions(self.player_id)
         if not valid_actions:
-            return (0, 0) # If no valid actions, stay in place
+            return (0, 0) # 如果没有有效动作，则原地不动
 
         game_state = observation
         board = game_state['board']
@@ -47,12 +47,11 @@ class BombAI(BaseAgent):
         # 1. Safety First: Avoid current position and expected move position being in explosion range
         safe_moves = []
         for action in valid_actions:
-            if len(action) == 3 and action[2]: # Place bomb action
-                # Placing a bomb itself does not immediately kill the player, unless the player is killed by their own bomb.
-                # But it is necessary to ensure that there is a safe escape path after placing the bomb.
-                # Simplified handling here: assume placing a bomb is safe, but subsequent escape is needed.
-                safe_moves.append(action)
-                continue
+            if len(action) == 3 and action[2]: # Place bomb action (0, 0, True)
+                # Before allowing placing a bomb, check if the current position is safe (not affected by other bombs/explosions)
+                if self._is_position_safe(current_pos, game_state):
+                    safe_moves.append(action)
+                continue # Continue checking the next valid action
             
             new_pos = (current_pos[0] + action[0], current_pos[1] + action[1])
             if self._is_position_safe(new_pos, game_state):
@@ -90,34 +89,38 @@ class BombAI(BaseAgent):
 
 
         # 3. Place bomb strategy:
-        #    - If a bomb can be placed and there are destructible blocks or enemies around
-        should_place_bomb = False
+        #    - If a bomb can be placed and its explosion range can destroy blocks or hit enemies
+        #    - And the player's current position is safe (already checked via safe_moves)
+        bomb_desirability = -1 # Desirability value, -1 means not desirable or impossible to place
         if (0, 0, True) in safe_moves and current_bombs < max_bombs:
-            # Check for destructible blocks or enemies around
-            # Simple check in four directions
-            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                target_pos = (current_pos[0] + dr, current_pos[1] + dc)
-                if env.game._is_valid_position(target_pos):
-                    cell_type = board[target_pos]
-                    if cell_type == BombGame.DESTRUCTIBLE_BLOCK:
-                        should_place_bomb = True
-                        break
-                    # Check enemy position
-                    other_player_pos = env.game.player1_pos if self.player_id == 2 else env.game.player2_pos
-                    if target_pos == other_player_pos:
-                        should_place_bomb = True
-                        break
-            if should_place_bomb:
-                # After placing a bomb, need to check for a safe escape path
-                # Simulate placing a bomb
-                temp_bombs = game_state['bombs'] + [{'pos': current_pos, 'timer': 3, 'range': bomb_range, 'owner': self.player_id, 'range_type': player_range_type}]
-                temp_game_state = game_state.copy()
-                temp_game_state['bombs'] = temp_bombs
+            # Simulate placing a bomb at the current position (timer is 30, meaning 3 seconds until explosion)
+            # This simulation is to check potential targets if it explodes.
+            potential_explosion_cells = self._get_explosion_coords(current_pos, bomb_range, board.shape[0], board, player_range_type)
 
-                # Check if an escape path exists from the explosion range
-                escape_paths = self._find_escape_path(current_pos, temp_game_state, bomb_range, player_range_type)
-                if escape_paths:
-                    return (0, 0, True) # Place bomb
+            destructible_blocks_hit_count = 0
+            hits_enemy = False
+            other_player_pos = env.game.player1_pos if self.player_id == 2 else env.game.player2_pos
+            
+            for exp_pos in potential_explosion_cells:
+                if env.game._is_valid_position(exp_pos):
+                    cell_type = board[exp_pos]
+                    if cell_type == BombGame.DESTRUCTIBLE_BLOCK:
+                        destructible_blocks_hit_count += 1
+                    if exp_pos == other_player_pos:
+                        hits_enemy = True
+                # If a target has been found, can exit the loop early
+                if destructible_blocks_hit_count or hits_enemy: # Fixed: Use the initialized variable
+                    break 
+            
+            if hits_enemy:
+                bomb_desirability = 100 # Hitting an enemy has the highest priority
+            elif destructible_blocks_hit_count > 0:
+                bomb_desirability = destructible_blocks_hit_count # Based on the number of blocks destroyed
+                if player_range_type == 'square':
+                    bomb_desirability += 5 # Additional points if it's a square bomb, encourages its use
+
+        if bomb_desirability > 0: # If placing a bomb is desirable
+            return (0, 0, True) # Place bomb
 
         # 4. Chase enemy or destroy blocks (if safe)
         # Prioritize destroying blocks, as it can yield items and open paths
@@ -227,7 +230,6 @@ class BombAI(BaseAgent):
                     if cell_type == BombGame.WALL or cell_type == BombGame.DESTRUCTIBLE_BLOCK:
                         is_obstacle = True
                     
-                    # Check if the new position is occupied by a bomb (cannot pass through unexploded bombs)
                     is_bomb_at_next_pos = False
                     for bomb_info in bombs:
                         if bomb_info['pos'] == next_pos:
@@ -241,32 +243,32 @@ class BombAI(BaseAgent):
 
     def _find_escape_path(self, start_pos: Tuple[int, int], game_state: Dict[str, Any], bomb_range: int, bomb_range_type: str) -> Optional[List[Tuple[int, int]]]:
         """
-        After placing a bomb, find a safe escape path.
-        Returns a path, or None if no safe path.
+        在放置炸弹后，寻找一条安全逃离路径。
+        返回一条路径，或者None如果没有安全路径。
         """
-        q = deque([(start_pos, [])]) # (current position, path)
+        q = deque([(start_pos, [])]) # (当前位置, 路径)
         visited = {start_pos}
         
         board_size = game_state['board'].shape[0]
         board = game_state['board']
-        bombs = game_state['bombs'] # Contains the newly placed bomb
+        bombs = game_state['bombs'] # 包含新放置的炸弹
 
-        # Simulate explosion area for the next frame
+        # 模拟下一帧的爆炸区域
         simulated_explosion_cells = set()
         for bomb in bombs:
-            # Only simulate bombs that are about to explode (timer <= 1)
+            # 只模拟即将爆炸的炸弹（timer <= 1）
             if bomb['timer'] <= 1: 
                 simulated_explosion_cells.update(self._get_explosion_coords(bomb['pos'], bomb['range'], board_size, board, bomb['range_type']))
 
-        # BFS to find a safe path
+        # BFS寻找安全路径
         while q:
             current_pos, path = q.popleft()
 
-            # If the current position is not within the simulated explosion area, a safe spot is found
+            # 如果当前位置不在模拟爆炸区域内，则找到安全点
             if current_pos not in simulated_explosion_cells:
-                return path # Return the escape path
+                return path # 返回逃离路径
 
-            moves = [(-1, 0), (1, 0), (0, -1), (0, 1)] # Up, Down, Left, Right
+            moves = [(-1, 0), (1, 0), (0, -1), (0, 1)] # 上，下，左，右
 
             for dr, dc in moves:
                 next_pos = (current_pos[0] + dr, current_pos[1] + dc)
@@ -275,7 +277,7 @@ class BombAI(BaseAgent):
                     next_pos not in visited):
                     
                     cell_type = board[next_pos]
-                    # Cannot move to walls, destructible blocks, bombs
+                    # 不能移动到墙壁、可破坏方块、炸弹
                     is_obstacle = False
                     if cell_type == BombGame.WALL or cell_type == BombGame.DESTRUCTIBLE_BLOCK:
                         is_obstacle = True
