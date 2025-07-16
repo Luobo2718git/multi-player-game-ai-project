@@ -3,10 +3,10 @@ import time
 from games.gomoku.gomoku_game import GomokuGame
 
 class MinimaxBot:
-    def __init__(self, name="Minimax AI", player_id=2, search_depth=3, time_limit=5.0):
+    def __init__(self, name="Minimax AI", player_id=2, max_depth=3, time_limit=5.0):
         self.name = name
         self.player_id = player_id
-        self.search_depth = search_depth
+        self.search_depth = max_depth
         self.time_limit = time_limit  # 单步最大思考时间（秒）
         self.start_time = None
 

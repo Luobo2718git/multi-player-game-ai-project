@@ -99,11 +99,18 @@ def benchmark_single_agent(env, agent, num_games=100, opponent_type='random'):
             # 记录智能体思考时间
             if current_agent == agent:
                 move_start_time = time.time()
-                action = current_agent.get_action(observation, env)
+                # print(current_agent.name)
+                if 'minimax' in current_agent.name:
+                    action = current_agent.get_action(env.get_board_state(), env.game.current_player)
+                else:
+                    action = current_agent.get_action(observation, env)
                 move_time = time.time() - move_start_time
                 agent_move_times.append(move_time)
             else:
-                action = current_agent.get_action(observation, env)
+                if 'minimax' in current_agent.name:
+                    action = current_agent.get_action(env.get_board_state(), env.game.current_player)
+                else:
+                    action = current_agent.get_action(observation, env)
             
             if action is None:
                 break

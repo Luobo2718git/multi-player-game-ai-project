@@ -132,7 +132,7 @@ def test_agents():
         
         # 测试Minimax Bot
         minimax_bot = MinimaxBot(name="测试MinimaxBot", player_id=2, max_depth=2)
-        action = minimax_bot.get_action(observation, env)
+        action = minimax_bot.get_action(env.get_board_state(), env.game.current_player)
         print("✓ Minimax Bot测试成功")
         
         # 测试MCTS Bot
@@ -168,7 +168,11 @@ def test_game_play():
         
         while not env.is_terminal() and step_count < 20:
             current_agent = agents[env.game.current_player]
-            action = current_agent.get_action(observation, env)
+            if current_agent.name == 'MinimaxBot':
+                action = current_agent.get_action(env.get_board_state(), env.game.current_player)
+            else:
+                action = current_agent.get_action(observation, env)
+            
             observation, reward, terminated, truncated, info = env.step(action)
             step_count += 1
             

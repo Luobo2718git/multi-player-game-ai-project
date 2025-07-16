@@ -61,7 +61,10 @@ def evaluate_agents(env, agent1, agent2, num_games=10, save_results=False):
             
             # 获取动作
             try:
-                action = current_agent.get_action(observation, env)
+                if current_agent.name == 'MinimaxBot':
+                    action = current_agent.get_action(env.get_board_state(), env.game.current_player)
+                else:
+                    action = current_agent.get_action(observation, env)
                 if action is None:
                     break
                 
@@ -166,7 +169,10 @@ def play_human_vs_ai(env, human_agent, ai_agent):
         
         try:
             # 获取动作
-            action = current_agent.get_action(observation, env)
+            if current_agent.name == 'MinimaxBot':
+                action = current_agent.get_action(env.get_board_state(), env.game.current_player)
+            else:
+                action = current_agent.get_action(observation, env)
             if action is None:
                 print("无效动作，游戏结束")
                 break

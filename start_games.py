@@ -17,15 +17,16 @@ def main():
     print("请选择游戏模式:")
     print("1. 多游戏GUI - 五子棋和贪吃蛇 (推荐)")
     print("2. 贪吃蛇专用GUI - 更好的贪吃蛇体验")
-    print("3. 五子棋命令行版本")
-    print("4. 贪吃蛇命令行版本")
-    print("5. 运行测试")
-    print("6. 退出")
+    print("3. 双人泡泡堂GUI")
+    print("4. 五子棋命令行版本")
+    print("5. 贪吃蛇命令行版本")
+    print("6. 运行测试")
+    print("7. 退出")
     print()
 
     while True:
         try:
-            choice = input("请输入选择 (1-6): ").strip()
+            choice = input("请输入选择 (1-7): ").strip()
 
             if choice == "1":
                 print("\n🎯 启动多游戏图形界面...")
@@ -57,8 +58,16 @@ def main():
                 else:
                     print("❌ 贪吃蛇GUI文件未找到")
                 break
-
+                
             elif choice == "3":
+                print("\n💣 启动泡泡堂GUI")
+                if os.path.exists("bomb_gui.py"):
+                    subprocess.run([sys.executable, "bomb_gui.py"])
+                else:
+                    print("❌ 贪吃蛇GUI文件未找到")
+                break
+
+            elif choice == "4":
                 print("\n♟️  启动五子棋命令行版本...")
                 subprocess.run(
                     [
@@ -74,7 +83,7 @@ def main():
                 )
                 break
 
-            elif choice == "4":
+            elif choice == "5":
                 print("\n🐍 启动贪吃蛇命令行版本...")
                 subprocess.run(
                     [
@@ -90,12 +99,12 @@ def main():
                 )
                 break
 
-            elif choice == "5":
+            elif choice == "6":
                 print("\n🧪 运行项目测试...")
                 subprocess.run([sys.executable, "test_project.py"])
                 break
 
-            elif choice == "6":
+            elif choice == "7":
                 print("\n👋 再见！")
                 sys.exit(0)
 
