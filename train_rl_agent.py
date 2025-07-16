@@ -3,150 +3,210 @@ import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import torch as th
+import torch.nn as nn
+import gymnasium as gym
 
-# 导入环境和对手AI
+# Import environment and opponent AI
 from games.bomb.bomb_env import BombEnv
-from .agents import BombAI # 你的对手AI
+from games.bomb.bomb_game import BombGame # Import BombGame to use its constants
+from agents import BombAI # Your opponent AI
 
-# 定义一个自定义的特征提取器来处理 Dict 观察空间
-# 这将把图像和标量特征拼接起来
+# Define a custom feature extractor to handle Dict observation space
+# This will concatenate image and scalar features
 class CustomCombinedExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Dict):
-        super().__init__(observation_space, features_dim=1) # features_dim 会被覆盖
+        # Initialize BaseFeaturesExtractor. The features_dim here is the *output* dimension of this extractor.
+        # We will set it to 256, as that's the output size of our final linear layer.
+        super().__init__(observation_space, features_dim=256)
 
-        # 图像特征提取器 (CNN)
-        # 假设 image_observation_space 是 (channels, height, width)
+        self.observation_space = observation_space
+
+        # Image feature extractor (CNN)
+        # Assuming image_observation_space is (channels, height, width)
         n_channels = observation_space["board_features"].shape[0]
         board_height = observation_space["board_features"].shape[1]
         board_width = observation_space["board_features"].shape[2]
 
-        # 简单的CNN架构
+        # Simple CNN architecture
         self.cnn = nn.Sequential(
             nn.Conv2d(n_channels, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
+            nn.AdaptiveAvgPool2d((4, 4)),  # Fixed output size to 64 x 4 x 4
             nn.Flatten()
         )
 
-        # 计算CNN输出的维度
+        # Calculate the flattened dimension of the CNN output
         with th.no_grad():
+            # Create a dummy input tensor matching the expected shape (batch_size, channels, height, width)
+            # We use 1 for batch_size as we only need to infer the feature dimension.
             dummy_input = th.as_tensor(np.zeros((1, n_channels, board_height, board_width)), dtype=th.float32)
-            cnn_output_dim = self.cnn(dummy_input).shape[1]
+            cnn_output_flattened_dim = self.cnn(dummy_input).shape[1]
 
-        # 标量特征的维度
+        # Dimension of scalar features
         scalar_feature_dim = observation_space["scalar_features"].shape[0]
 
-        # 合并后的特征维度
-        self._features_dim = cnn_output_dim + scalar_feature_dim
+        # Total dimension before the final linear layer (CNN output + scalar features)
+        combined_pre_linear_dim = cnn_output_flattened_dim + scalar_feature_dim
 
-        self.linear = nn.Sequential(
-            nn.Linear(self._features_dim, 256),
+        # Final linear layer to combine features and output a fixed size (256)
+        self.final_linear_layer = nn.Sequential(
+            nn.Linear(combined_pre_linear_dim, 256), # Output 256 features
             nn.ReLU()
         )
 
-    def forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:
-        board_features = observations["board_features"].float() / BombGame.WILL_EXPLOSION # 归一化图像特征
-        scalar_features = observations["scalar_features"].float() / 1000.0 # 归一化标量特征，假设最大值1000
+        # The _features_dim attribute (inherited from BaseFeaturesExtractor) must reflect the *actual output*
+        # dimension of this feature extractor's forward pass. This fixes the "mat1 and mat2 shapes" error.
+        self._features_dim = 256
+
+    def forward(self, observations: dict[str, th.Tensor]) -> th.Tensor:
+        # Normalize image features: divide by BombGame.WILL_EXPLOSION (max value of board elements)
+        board_features = observations["board_features"].float() / BombGame.WILL_EXPLOSION
+        
+        # Normalize scalar features: divide by the maximum possible value in the scalar observation space.
+        scalar_high = self.observation_space["scalar_features"].high
+        # Safely get the max value from the high attribute. If it's an array, take the max; otherwise, use it directly.
+        scalar_max_val = scalar_high.max() if isinstance(scalar_high, np.ndarray) else scalar_high
+        
+        scalar_features = observations["scalar_features"].float() / scalar_max_val
 
         cnn_out = self.cnn(board_features)
+        
+        # Concatenate CNN output and scalar features along dimension 1 (features dimension)
         combined_features = th.cat((cnn_out, scalar_features), dim=1)
-        return self.linear(combined_features)
+        
+        # Pass through the final linear layer
+        return self.final_linear_layer(combined_features)
 
 
 def make_env(rank: int, seed: int = 0, player_id: int = 1, opponent_agent=None):
     """
-    用于SubprocVecEnv创建环境的函数
+    Function for creating environments for SubprocVecEnv
     """
     def _init():
         env = BombEnv(board_size=15, player_id=player_id, opponent_agent=opponent_agent)
-        # env.seed(seed + rank) # Gym 0.21 可能不支持 .seed()
+        env.reset(seed=seed + rank)
+        print(f"DEBUG: Initialized environment for rank {rank} with seed {seed + rank}")
         return env
-    # 设置随机种子
-    # np.random.seed(seed + rank) # 确保每个环境有不同的随机种子
-    # random.seed(seed + rank)
     return _init
 
 if __name__ == '__main__':
     LOG_DIR = "./ppo_bomb_logs/"
     os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs("./models/", exist_ok=True) # For saving checkpoints
+    os.makedirs("./best_model/", exist_ok=True) # For saving the best model
+    os.makedirs("./results/", exist_ok=True) # For saving evaluation results logs
 
-    # 实例化你的对手AI
-    opponent_ai = BombAI(name="OpponentBombAI", player_id=2) # RL智能体作为玩家1，AI作为玩家2
+    print("DEBUG: Directories created.")
 
-    # 创建多个并行环境进行训练
-    num_envs = 8 # 可以根据你的CPU核心数调整
-    # 使用 SubprocVecEnv 以利用多核CPU加速训练
-    # 注意：传递对象（如 opponent_ai）给子进程需要其是可序列化的
-    # BombAI应该是可序列化的
-    vec_env = SubprocVecEnv([make_env(i, player_id=1, opponent_agent=opponent_ai) for i in range(num_envs)])
-    # vec_env = DummyVecEnv([make_env(0, player_id=1, opponent_agent=opponent_ai)]) # 单环境调试用
+    # Instantiate your opponent AI
+    opponent_ai = BombAI(name="OpponentBombAI", player_id=2) # RL agent as Player 1, AI as Player 2
+    print("DEBUG: Opponent AI instantiated.")
+
+    # Create multiple parallel environments for training
+    num_envs = 8 # Adjust based on your CPU cores
+    try:
+        vec_env = SubprocVecEnv([make_env(i, player_id=1, opponent_agent=opponent_ai) for i in range(num_envs)])
+        print(f"DEBUG: SubprocVecEnv created with {num_envs} environments.")
+    except Exception as e:
+        print(f"ERROR: Failed to create SubprocVecEnv: {e}")
+        # Fallback to DummyVecEnv for debugging if SubprocVecEnv fails
+        print("INFO: Falling back to DummyVecEnv for single-process debugging.")
+        vec_env = DummyVecEnv([make_env(0, player_id=1, opponent_agent=opponent_ai)])
 
 
-    # 定义PPO模型的策略网络架构
+    # Define policy network architecture for PPO model
     policy_kwargs = dict(
         features_extractor_class=CustomCombinedExtractor,
-        net_arch=dict(pi=[64, 64], vf=[64, 64]) # 策略网络和价值网络结构
+        # net_arch defines the layers *after* the feature extractor.
+        # The first layer will take the output of CustomCombinedExtractor (256 features) as input.
+        net_arch=dict(pi=[256, 128], vf=[256, 128]) 
     )
+    print("DEBUG: Policy kwargs defined.")
 
-    # 创建PPO模型
+    # Create PPO model
     model = PPO(
-        "MultiInputPolicy", # 用于处理 Dict 观察空间
+        "MultiInputPolicy", # For Dict observation space
         vec_env,
         policy_kwargs=policy_kwargs,
-        verbose=1,
-        tensorboard_log=LOG_DIR,
-        gamma=0.99, # 折扣因子
-        n_steps=2048, # 收集多少步数据后进行一次学习更新
-        ent_coef=0.01, # 熵正则化系数，鼓励探索
-        learning_rate=0.0003,
-        clip_range=0.2,
-        batch_size=64,
-        gae_lambda=0.95
+        verbose=1, # Print training information
+        tensorboard_log=LOG_DIR, # TensorBoard log directory
+        gamma=0.99, # Discount factor, larger value emphasizes long-term rewards
+        n_steps=2048, # Number of steps to collect data before a learning update (per environment)
+        ent_coef=0.01, # Entropy regularization coefficient, encourages exploration (0.01 is common)
+        learning_rate=0.0003, # Learning rate
+        clip_range=0.2, # PPO's clipping range
+        batch_size=64, # Batch size used for each update
+        gae_lambda=0.95 # Lambda parameter for Generalized Advantage Estimation (GAE)
     )
+    print("DEBUG: PPO model created.")
 
-    # 设置回调函数：保存最佳模型和定期保存检查点
+    # Set up callbacks: save best model and periodic checkpoints
     checkpoint_callback = CheckpointCallback(
-        save_freq=100000, # 每100000步保存一次模型
+        save_freq=100000, # Save model every 100,000 steps
         save_path="./models/",
         name_prefix="ppo_bomb_model"
     )
+    print("DEBUG: Checkpoint callback set up.")
 
-    # 创建一个独立的评估环境（不用于训练，只用于评估）
-    eval_env = make_env(0, player_id=1, opponent_agent=opponent_ai)() # 单独的环境实例
+    # Create a separate evaluation environment (not used for training, only for evaluation)
+    eval_env = DummyVecEnv([make_env(0, player_id=1, opponent_agent=opponent_ai)])
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path="./best_model/",
         log_path="./results/",
-        eval_freq=50000, # 每50000步评估一次
-        deterministic=True, # 评估时使用确定性策略
-        render=False # 评估时不渲染
+        eval_freq=50000, # Evaluate every 50,000 steps
+        deterministic=True, # Use deterministic policy during evaluation
+        render=False # Do not render during evaluation
     )
+    print("DEBUG: Eval callback set up.")
 
-    print("开始训练PPO智能体...")
-    total_timesteps = 5000000 # 总训练步数，可以调整
-    model.learn(total_timesteps=total_timesteps, callback=[checkpoint_callback, eval_callback])
-    print("训练完成！")
+    print("Starting PPO agent training...")
+    total_timesteps = 5_000_000 # Total training steps, can be adjusted, 5 million steps is a starting point
+    try:
+        model.learn(total_timesteps=total_timesteps, callback=[checkpoint_callback, eval_callback])
+        print("Training complete!")
+    except Exception as e:
+        print(f"ERROR: Training failed: {e}")
 
-    # 保存最终模型
+    # Save the final model
     model.save("ppo_bomb_final_model")
+    print("DEBUG: Final model saved.")
 
-    # 测试训练好的模型 (可选)
-    print("测试训练好的模型...")
-    obs, info = eval_env.reset()
-    for _ in range(100): # 运行100步
-        action, _states = model.predict(obs, deterministic=True, action_masks=np.array([eval_env._get_action_mask(eval_env.player_id)]))
-        # action_masks 应该是一个 batch 的掩码，这里只传一个
-        # 对于 PPO，action_masks 的支持可能依赖于 SB3 的版本和特定实现
-        # 如果不工作，你可能需要在 CustomPolicy 中自定义 ActionDistribution
-        # 或者在环境 step 中处理无效动作的惩罚
+    # Test the trained model (optional)
+    print("Testing the trained model...")
+    # obs here is a dictionary of NumPy arrays, already batched by DummyVecEnv (batch_size=1)
+    obs, info = eval_env.reset() 
+
+    for episode in range(3): # Run a few episodes for testing
+        done = False
+        truncated = False
+        step_count = 0
+        print(f"DEBUG: Starting test episode {episode + 1}")
+        while not (done or truncated):
+            # model.predict expects a batched observation. DummyVecEnv already provides it.
+            action, _states = model.predict(obs, deterministic=True)
+            
+            # Action returned by model.predict is batched (e.g., [action_value])
+            # Unbatch it for the environment step as the single environment expects a single action.
+            single_action = action[0] 
+
+            obs, reward, done, truncated, info = eval_env.step(single_action)
+            
+            step_count += 1
+            if done[0] or truncated[0]: # Accessing first element for vectorized env
+                print(f"DEBUG: Episode {episode + 1} finished.")
+                print(f"Episode ended, winner: {info[0].get('winner', 'N/A')}, Player 1 score: {info[0].get('player1_score', 'N/A')}, Player 2 score: {info[0].get('player2_score', 'N/A')}")
+                break # Exit inner while loop
+
+        if not (done[0] or truncated[0]): # If loop finished without done/truncated (e.g., max steps)
+            print(f"DEBUG: Episode {episode + 1} reached max steps without ending.")
+            print(f"Episode ended, winner: {info[0].get('winner', 'N/A')}, Player 1 score: {info[0].get('player1_score', 'N/A')}, Player 2 score: {info[0].get('player2_score', 'N/A')}")
         
-        obs, reward, done, truncated, info = eval_env.step(action[0]) # action[0]因为 predict 返回的是批次
-        eval_env.render() # 如果你实现了 render 方法
-        if done or truncated:
-            print(f"回合结束，获胜者: {info.get('winner', 'N/A')}, 玩家1分数: {info.get('player1_score', 'N/A')}, 玩家2分数: {info.get('player2_score', 'N/A')}")
-            obs, info = eval_env.reset()
+        obs, info = eval_env.reset() # Reset for next episode
+
     eval_env.close()
+    print("DEBUG: Eval environment closed.")

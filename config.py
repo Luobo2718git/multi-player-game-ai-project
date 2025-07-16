@@ -136,5 +136,6 @@ REWARDS = {
     'collect_item': 5.0,
     'per_step_penalty': -0.1,
     'invalid_action_penalty': -0.5,
-    'self_damage_penalty': -50.0 # 自杀惩罚
+    'self_damage_penalty': -50.0, # 自杀惩罚
+    'alive_step': 0.1
 }

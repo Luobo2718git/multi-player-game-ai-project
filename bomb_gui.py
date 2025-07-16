@@ -5,7 +5,9 @@ import os
 from typing import Optional, Tuple, Dict, Any, Union
 # 只导入泡泡堂游戏和相关智能体
 from games.bomb import BombGame, BombEnv
-from agents import bombHumanAgent, BombAI
+# 从 agents 导入 bombHumanAgent，并从修改后的 BombAI 导入 BombAI
+from agents import bombHumanAgent
+from agents.ai_bots.bomb_bot import BombAI # 明确导入路径
 
 # 颜色定义
 COLORS = {
@@ -32,7 +34,8 @@ class GameGUI:
         pygame.init()
         pygame.display.set_caption("泡泡堂 AI 对战")
 
-        self.board_size = 19 # 泡泡堂棋盘大小
+        # 修正：将棋盘大小设置为15，与训练环境保持一致
+        self.board_size = 15 # 泡泡堂棋盘大小
         self.cell_size = 40 # 调整单元格大小以提高可见性
 
         self.font_path = self._get_chinese_font()
@@ -53,7 +56,17 @@ class GameGUI:
         self.game_type: str = "bomb" # 游戏类型固定为泡泡堂
         self.env: BombEnv = BombEnv(board_size=self.board_size)
         self.player1_agent = bombHumanAgent(player_id=1) # 玩家1始终是人类
-        self.player2_agent: BombAI = BombAI(player_id=2) # 玩家2是泡泡堂AI
+
+        # === 修改点：根据配置决定加载RL模型还是使用内置AI ===
+        self.use_rl_for_player2 = True # 设置为 True 来启用RL AI，设置为 False 来使用内置AI
+        self.rl_model_path = "./best_model/best_model.zip" # 您的RL模型路径
+
+        if self.use_rl_for_player2:
+            self.player2_agent: BombAI = BombAI(player_id=2, use_rl_model=True, rl_model_path=self.rl_model_path)
+        else:
+            self.player2_agent: BombAI = BombAI(player_id=2, use_rl_model=False) # 使用内置AI逻辑
+        # ====================================================
+
         self.game_active = False # 标志，指示游戏是否活跃
 
         # 游戏计时器变量
@@ -74,20 +87,39 @@ class GameGUI:
             pygame.K_d: (0, 1),
             pygame.K_SPACE: (0, 0, True), # 放置炸弹动作
         }
+        
+        # 新增：将元组动作映射到BombEnv的离散动作
+        self.action_tuple_to_int_map = {
+            (-1, 0): 0,   # Up
+            (1, 0): 1,    # Down
+            (0, -1): 2,   # Left
+            (0, 1): 3,    # Right
+            (0, 0): 4,    # Stay
+            (0, 0, True): 5 # Plant Bomb
+        }
+
 
         self._initialize_game() # 直接初始化游戏
 
     def _initialize_game(self):
         """初始化泡泡堂游戏环境和AI"""
-        self.env = BombEnv(board_size=self.board_size)
-        self.player2_agent = BombAI(player_id=2) # 泡泡堂AI
+        # 确保环境初始化时将对手AI传递进去
+        # 这样BombEnv才能在内部调用对手AI的get_action方法
+        self.env = BombEnv(board_size=self.board_size, opponent_agent=self.player2_agent)
+        
+        # 重新实例化玩家2的AI，确保其内部状态被重置（特别是RL模型，如果它有内部状态）
+        if self.use_rl_for_player2:
+            self.player2_agent = BombAI(player_id=2, use_rl_model=True, rl_model_path=self.rl_model_path)
+        else:
+            self.player2_agent = BombAI(player_id=2, use_rl_model=False)
+
         pygame.display.set_caption("泡泡堂 AI 对战")
         
         # 重置屏幕大小（已在__init__中设置，但为了保持一致性）
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         
         self.game_active = True
-        self.observation = self.env.reset()
+        self.observation, _ = self.env.reset() # reset现在返回observation和info
         self.player1_agent.reset() # 重置人类玩家的动作状态
         self.game_start_time = time.time() # 在初始化时重置游戏开始时间
         self.pressed_keys = {} # 清除按下按键的状态
@@ -97,26 +129,28 @@ class GameGUI:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE: # 添加ESC键退出
-                    return False
-                
-                # 如果游戏不活跃 (即游戏结束时)，只处理 'R' 和 'ESC' 键
-                if not self.game_active:
+            
+            # 如果游戏不活跃 (即游戏结束时)，只处理 'R' 和 'ESC' 键 
+            if not self.game_active:
+                if event.type == pygame.KEYDOWN: # 确保只处理KEYDOWN事件
                     if event.key == pygame.K_r: # 重置游戏
                         self._initialize_game() # 重新初始化当前游戏
                         return True # 游戏已重置，继续运行
                     elif event.key == pygame.K_ESCAPE: # 退出游戏
                         return False # 退出游戏循环
-                
-                # 游戏活跃时，处理其他按键
-                if self.game_active and event.key in self.key_to_action_map:
-                    self.pressed_keys[event.key] = True
             
-            if event.type == pygame.KEYUP:
-                # 从pressed_keys中移除松开的按键
-                if event.key in self.key_to_action_map:
-                    self.pressed_keys[event.key] = False # 标记为未按下
+            # 游戏活跃时，处理其他按键
+            if self.game_active:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE: # 游戏活跃时也可以按ESC退出
+                        return False
+                    if event.key in self.key_to_action_map:
+                        self.pressed_keys[event.key] = True
+                
+                if event.type == pygame.KEYUP:
+                    # 从pressed_keys中移除松开的按键
+                    if event.key in self.key_to_action_map:
+                        self.pressed_keys[event.key] = False # 标记为未按下
 
         return True
     
@@ -143,10 +177,9 @@ class GameGUI:
         #         print(f"找到中文字体: {font_path}")
         #         return font_path
             
-
         # # 如果没有找到中文字体，使用pygame默认字体
         # return None
-        return "Fonts\Font1.ttf"
+        return "Fonts/Font1.ttf" # 假设字体文件在Fonts目录下
 
     def update_game(self):
         """更新游戏状态"""
@@ -163,33 +196,67 @@ class GameGUI:
             self.env.game.current_moves = self.env.game.max_moves # 强制max_moves以触发终止状态
             return # 如果时间到，停止更新
 
-        # 根据当前按下的按键确定玩家1的动作
-        action1: Union[Tuple[int, int], Tuple[int, int, bool]] = (0, 0) # 默认不操作
+        # 根据当前按下的按键确定玩家1的动作 (元组形式)
+        action1_tuple: Union[Tuple[int, int], Tuple[int, int, bool]] = (0, 0) # 默认不操作
 
         # 如果空格键按下，优先放置炸弹
         if self.pressed_keys.get(pygame.K_SPACE, False):
-            action1 = self.key_to_action_map[pygame.K_SPACE]
+            action1_tuple = self.key_to_action_map[pygame.K_SPACE]
         else:
             # 以特定顺序检查移动键（例如：上、下、左、右）
             # 这确保了在同时按下多个移动键时行为一致
             for key in [pygame.K_UP, pygame.K_w, pygame.K_DOWN, pygame.K_s, pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d]:
                 if self.pressed_keys.get(key, False):
-                    action1 = self.key_to_action_map[key]
+                    action1_tuple = self.key_to_action_map[key]
                     break # 采取检测到的第一个移动键
 
         # 确保选择的动作有效
-        if action1 not in self.env.get_valid_actions(self.player1_agent.player_id):
-            action1 = (0, 0) # 如果无效，则恢复为不操作
+        if action1_tuple not in self.env.game.get_valid_actions(self.player1_agent.player_id):
+            action1_tuple = (0, 0) # 如果无效，则恢复为不操作
 
-        self.player1_agent.set_action(action1) # 设置人类玩家的动作
+        self.player1_agent.set_action(action1_tuple) # 设置人类玩家的动作
 
         # 获取玩家2的动作（AI）
-        action2 = self.player2_agent.get_action(self.observation, self.env)
+        action2_tuple = self.player2_agent.get_action(self.observation, self.env.game)
+
+        # 将人类玩家的动作 (元组) 转换为 BombEnv 所需的离散整数动作
+        action1_discrete = self.action_tuple_to_int_map.get(action1_tuple, 4) # 默认是4 (Stay)
+
+        # === 新增：打印模型运算数据 (玩家动作) ===
+        # 创建一个反向映射，用于将离散动作ID转换为可读的动作名称
+        action_map_reverse = {
+            0: "Up",
+            1: "Down",
+            2: "Left",
+            3: "Right",
+            4: "Stay",
+            5: "Plant Bomb"
+        }
+        player1_action_name = action_map_reverse.get(action1_discrete, "未知")
+        
+        # 对于action2_tuple，需要判断是否是放置炸弹动作来显示
+        if len(action2_tuple) == 3 and action2_tuple[2]:
+            player2_action_name = "放置炸弹"
+        elif action2_tuple == (-1,0):
+            player2_action_name = "上"
+        elif action2_tuple == (1,0):
+            player2_action_name = "下"
+        elif action2_tuple == (0,-1):
+            player2_action_name = "左"
+        elif action2_tuple == (0,1):
+            player2_action_name = "右"
+        elif action2_tuple == (0,0):
+            player2_action_name = "不动"
+        else:
+            player2_action_name = f"移动: {action2_tuple}" # 如果是其他未知的移动元组
+
+        print(f"玩家1动作: {player1_action_name}, 玩家2(AI)动作: {player2_action_name}")
+        # ============================================
 
         # 执行游戏步骤
-        self.observation, reward1, reward2, terminal, info = self.env.step(action1, action2)
+        self.observation, reward, terminated, truncated, info = self.env.step(action1_discrete) # 传入离散动作
 
-        if terminal:
+        if terminated or truncated: # 游戏结束条件
             self.game_active = False # 游戏结束
 
     def _draw_message_box(self, messages: list[str], text_color: Tuple[int, int, int] = COLORS['BLACK']):
@@ -239,7 +306,9 @@ class GameGUI:
         timer_rect = timer_text.get_rect(center=(self.screen_width // 2, self.header_height // 2)) # 放置在顶部信息栏中央
         self.screen.blit(timer_text, timer_rect)
 
-        board_state = self.observation['board']
+        # 从 observation 中获取 'board_features' 并挤压维度
+        board_state = self.observation['board_features'].squeeze(0) # 获取棋盘数据并移除第一个维度
+        current_game_state = self.env.game.get_state()
         
         # 绘制棋盘
         for r in range(self.board_size):
@@ -288,26 +357,26 @@ class GameGUI:
                 # 绘制玩家（在其他背景之上，但炸弹和爆炸有自己的绘制逻辑）
                 # 玩家绘制在顶层
                 # 绘制玩家
-                if self.observation['alive1']:
+                if current_game_state['alive1']:
                     # 调整玩家矩形的Y坐标
-                    p1_rect = pygame.Rect(self.observation['player1_pos'][1] * self.cell_size, self.observation['player1_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
+                    p1_rect = pygame.Rect(current_game_state['player1_pos'][1] * self.cell_size, current_game_state['player1_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
                     pygame.draw.rect(self.screen, COLORS['BLUE'], p1_rect) # 玩家1
                     # 绘制眼睛或小标记以区分
                     pygame.draw.circle(self.screen, COLORS['BLACK'], (p1_rect.centerx - self.cell_size // 6, p1_rect.centery - self.cell_size // 6), self.cell_size // 10)
                     pygame.draw.circle(self.screen, COLORS['BLACK'], (p1_rect.centerx + self.cell_size // 6, p1_rect.centery - self.cell_size // 6), self.cell_size // 10)
                     # 绘制护盾效果
-                    if self.observation['player1_shield_active']:
+                    if current_game_state['player1_shield_active']:
                         pygame.draw.circle(self.screen, COLORS['GOLD'], p1_rect.center, self.cell_size // 2, 3) # 护盾光环
 
-                if self.observation['alive2']:
+                if current_game_state['alive2']:
                     # 调整玩家矩形的Y坐标
-                    p2_rect = pygame.Rect(self.observation['player2_pos'][1] * self.cell_size, self.observation['player2_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
+                    p2_rect = pygame.Rect(current_game_state['player2_pos'][1] * self.cell_size, current_game_state['player2_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
                     pygame.draw.rect(self.screen, COLORS['RED'], p2_rect) # 玩家2
                     # 绘制眼睛或小标记以区分
                     pygame.draw.circle(self.screen, COLORS['WHITE'], (p2_rect.centerx - self.cell_size // 6, p2_rect.centery - self.cell_size // 6), self.cell_size // 10)
                     pygame.draw.circle(self.screen, COLORS['WHITE'], (p2_rect.centerx + self.cell_size // 6, p2_rect.centery - self.cell_size // 6), self.cell_size // 10)
                     # 绘制护盾效果
-                    if self.observation['player2_shield_active']:
+                    if current_game_state['player2_shield_active']:
                         pygame.draw.circle(self.screen, COLORS['GOLD'], p2_rect.center, self.cell_size // 2, 3) # 护盾光环
 
                 
@@ -321,17 +390,23 @@ class GameGUI:
         start_x = 20
 
         # 泡泡堂特定信息
-        bombs1 = self.observation['player1_bombs_max']
-        range1 = self.observation['player1_range']
-        shield1 = f"护盾: {'是' if self.observation['player1_shield_active'] else '否'}"
-        range_type1 = f"范围: {'方形' if self.observation['player1_range_type'] == 'square' else '十字'}"
-        score1 = self.observation['player1_score'] # 获取玩家1分数
+        # 这些信息现在应该从 self.env.game 获取，而不是 self.observation
+        # 因为 self.observation 已经被格式化为RL模型的输入，可能不包含所有原始游戏信息
+        # 或者，如果 self.observation['scalar_features'] 包含了这些信息，也可以从那里提取
+        # 为了简洁和避免重复，我们从 self.env.game 获取最新的原始游戏状态
+        current_game_state = self.env.game.get_state()
 
-        bombs2 = self.observation['player2_bombs_max']
-        range2 = self.observation['player2_range']
-        shield2 = f"护盾: {'是' if self.observation['player2_shield_active'] else '否'}"
-        range_type2 = f"范围: {'方形' if self.observation['player2_range_type'] == 'square' else '十字'}"
-        score2 = self.observation['player2_score'] # 获取玩家2分数
+        bombs1 = current_game_state['player1_bombs_max']
+        range1 = current_game_state['player1_range']
+        shield1 = f"护盾: {'是' if current_game_state['player1_shield_active'] else '否'}"
+        range_type1 = f"范围: {'方形' if current_game_state['player1_range_type'] == 'square' else '十字'}"
+        score1 = current_game_state['player1_score'] # 获取玩家1分数
+
+        bombs2 = current_game_state['player2_bombs_max']
+        range2 = current_game_state['player2_range']
+        shield2 = f"护盾: {'是' if current_game_state['player2_shield_active'] else '否'}"
+        range_type2 = f"范围: {'方形' if current_game_state['player2_range_type'] == 'square' else '十字'}"
+        score2 = current_game_state['player2_score'] # 获取玩家2分数
 
         player_info = f"  Player1        :  炸弹数量: {bombs1}  范围: {range1}  类型：{range_type1} {shield1} 分数: {score1} "
         ai_info = f"  Player2(AI):  炸弹数量: {bombs2}  范围: {range2}  类型：{range_type2} {shield2} 分数: {score2} "
@@ -343,8 +418,8 @@ class GameGUI:
 
 
         # 游戏结束信息弹窗
-        if not self.game_active and self.env and self.env.is_terminal():
-            winner = self.env.get_winner()
+        if not self.game_active and self.env and self.env.game.is_terminal(): # 使用env.game.is_terminal()
+            winner = self.env.game.get_winner() # 使用env.game.get_winner()
             game_over_messages = []
             if winner == 1:
                 game_over_messages.append("玩家 1 获胜！")
@@ -354,8 +429,8 @@ class GameGUI:
                 game_over_messages.append("平局！")
             
             game_over_messages.append(f"最终分数:")
-            game_over_messages.append(f"玩家1: {self.observation['player1_score']}")
-            game_over_messages.append(f"玩家2: {self.observation['player2_score']}")
+            game_over_messages.append(f"玩家1: {current_game_state['player1_score']}") # 从最新的游戏状态获取分数
+            game_over_messages.append(f"玩家2: {current_game_state['player2_score']}") # 从最新的游戏状态获取分数
             game_over_messages.append("按 'R' 重玩")
             game_over_messages.append("按 'ESC' 退出") # 添加退出提示
             

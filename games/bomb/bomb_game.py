@@ -1,5 +1,3 @@
-# games/bomb/bomb_game.py
-
 import numpy as np
 import random
 import time
@@ -29,6 +27,21 @@ class BombGame(BaseGame):
     
     # 护盾持续回合数
     SHIELD_DURATION = 30
+
+    # 定义游戏奖励 (已包含您之前提供的奖励)
+    REWARDS = {
+        'win': 100.0,
+        'lose': -100.0,
+        'destroy_block': 1.0,
+        'hit_enemy': 20.0, # 击中敌人奖励更高
+        'collect_item': 5.0,
+        'per_step_penalty': -0.1,
+        'invalid_action_penalty': -0.5,
+        'self_damage_penalty': -50.0, # 自杀惩罚
+        'alive_step': 0.1,
+        'draw': 0.0, # 添加平局奖励
+        'death': -75.0 # 添加死亡惩罚，与self_damage_penalty区分
+    }
 
     def __init__(self, board_size: int = 15, initial_bombs: int = 1, initial_range: int = 1, # 修改：initial_bombs 默认为2
                  destructible_block_density: float = 0.5, item_spawn_chance: float = 0.5): # 修改：item_spawn_chance 增加到0.5
@@ -531,7 +544,7 @@ class BombGame(BaseGame):
                 self.player2_range_type = 'square'
 
 
-    def step(self, action1: Union[Tuple[int, int], Tuple[int, int, bool]], action2: Union[Tuple[int, int], Tuple[int, int, bool], None] = None) -> Tuple[Dict[str, Any], float, float, bool, Dict[str, Any]]:
+    def step(self, action1: Union[Tuple[int, int], Tuple[int, int, bool]], action2: Union[Tuple[int, int], Tuple[int, int, bool], None] = None) -> Tuple[float, float, bool, bool]: # 修改返回类型提示，只返回4个值
         """
         执行一步游戏。
         动作可以是 (dr, dc) 代表移动，或者 (0, 0, True) 代表放置炸弹。
@@ -655,9 +668,9 @@ class BombGame(BaseGame):
                 self._board[item_pos] = item['type'] # 将棋盘设置为物品类型
 
 
-        observation = self.get_state()
-        info = self.get_game_info()
-        return observation, reward1, reward2, terminal, info
+        # observation = self.get_state() # 移除
+        # info = self.get_game_info() # 移除
+        return reward1, reward2, terminal, terminal # 修改返回语句，只返回4个值
 
     @property
     def board(self):
@@ -840,3 +853,4 @@ class BombGame(BaseGame):
         对于泡泡堂游戏，直接返回当前棋盘状态即可，GUI会根据此进行绘制。
         """
         return self._board.copy() # 返回 _board 的副本
+
