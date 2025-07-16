@@ -39,6 +39,7 @@ GAME_CONFIGS = {
         'timeout': 60,  # 秒
         'max_moves': 1000,  # 最大回合数
     }
+    
 }
 
 # AI配置
@@ -125,11 +126,15 @@ class ActionType:
     DRAW = 'draw'        # 请求和棋 
 
 
-# 游戏奖励定义
+
+
 REWARDS = {
-    'win': 100,         # 获胜奖励
-    'lose': -100,       # 失败惩罚
-    'draw': 0,          # 平局奖励
-    'alive_step': 0.1,  # 每存活一步的奖励
-    'death': -50        # 死亡惩罚
+    'win': 100.0,
+    'lose': -100.0,
+    'destroy_block': 1.0,
+    'hit_enemy': 20.0, # 击中敌人奖励更高
+    'collect_item': 5.0,
+    'per_step_penalty': -0.1,
+    'invalid_action_penalty': -0.5,
+    'self_damage_penalty': -50.0 # 自杀惩罚
 }
