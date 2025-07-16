@@ -29,6 +29,7 @@ COLORS = {
     "ORANGE": (255, 165, 0),
     "PURPLE": (128, 0, 128),
     "CYAN": (0, 255, 255),
+    "PURPLE": (160, 32, 240),
 }
 
 
@@ -75,7 +76,7 @@ class MultiGameGUI:
         # === 新增：方向变量 ===
         self.player_direction = None
         self.ai_direction = None
-        self.victory_length = 15  # 贪吃蛇胜利长度
+        self.victory_length = 25  # 贪吃蛇胜利长度
         self._switch_game("gomoku")
 
     def _get_chinese_font(self):
@@ -390,7 +391,7 @@ class MultiGameGUI:
                     observation, reward1, reward2, done, info = None, 0, 0, False, {}
             else:
                 observation, reward1, reward2, done, info = None, 0, 0, False, {}
-            # 胜负判定
+            # === 胜负判定 ===
             snake1 = getattr(self.env.game, "snake1", [])
             snake2 = getattr(self.env.game, "snake2", [])
             alive1 = getattr(self.env.game, "alive1", False)
@@ -409,8 +410,7 @@ class MultiGameGUI:
                 self.winner = 2
             elif done:
                 self.game_over = True
-                winner_fn = getattr(self.env, "get_winner", None)
-                winner = winner_fn() if callable(winner_fn) else None
+                winner = self.env.get_winner()
                 self.winner = winner if winner is not None else 0
         else:
             # GomokuGame: 只需一个动作
@@ -587,6 +587,15 @@ class MultiGameGUI:
                     elif board[row, col] == 5:  # 食物
                         pygame.draw.rect(self.screen, COLORS["GREEN"], rect)
 
+        # 绘制普通食物
+        for x, y in getattr(self.env.game, 'foods', []):
+            rect = pygame.Rect(self.margin + y * self.cell_size + 4, self.margin + x * self.cell_size + 4, self.cell_size - 8, self.cell_size - 8)
+            pygame.draw.ellipse(self.screen, COLORS["GREEN"], rect)
+        # 绘制奖励球（super food）
+        for x, y in getattr(self.env.game, 'super_foods', []):
+            rect = pygame.Rect(self.margin + y * self.cell_size, self.margin + x * self.cell_size, self.cell_size, self.cell_size)
+            pygame.draw.ellipse(self.screen, COLORS["PURPLE"], rect)
+
     def _draw_ui(self):
         """绘制UI界面"""
         # 绘制按钮
@@ -682,14 +691,11 @@ class MultiGameGUI:
         info_surface = self.font_small.render(player_info, True, COLORS["DARK_GRAY"])
         self.screen.blit(info_surface, (status_x, info_y))
 
-        # 绘制胜利条件到右侧按钮区下方
+        # UI右下角胜利条件提示
         if self.current_game == "snake":
-            victory_text = f"胜利条件：蛇长度达到20或对方死亡"
+            victory_text = f"胜利条件：蛇长度达到{self.victory_length}或对方死亡"
             victory_surface = self.font_small.render(victory_text, True, COLORS["BLACK"])
-            # 右下角坐标
-            right_x = self.window_width - victory_surface.get_width() - 20
-            bottom_y = self.window_height - victory_surface.get_height() - 20
-            self.screen.blit(victory_surface, (right_x, bottom_y))
+            self.screen.blit(victory_surface, (self.window_width - 320, self.window_height - 40))
 
     def run(self):
         """运行游戏主循环"""

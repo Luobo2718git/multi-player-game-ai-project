@@ -21,48 +21,55 @@ class SnakeGame(BaseGame):
             'max_moves': config.GAME_CONFIGS['snake']['max_moves']
         }
         super().__init__(game_config)
-        
         self.board_size = board_size
         self.initial_length = initial_length
         self.food_count = food_count
-        
         # 蛇的位置和方向
         self.snake1 = []  # 玩家1的蛇
         self.snake2 = []  # 玩家2的蛇
         self.direction1 = (0, 1)  # 玩家1的方向
         self.direction2 = (0, -1)  # 玩家2的方向
-        
         # 食物位置
         self.foods = []
-        
+        self.super_foods = []  # 奖励球
+        self.super_food_timer = 0  # 奖励球计时器
+        self.last_super_food_time = 0  # 上次奖励球生成时间
+        self.super_food_count = 0  # 本局已出现奖励球次数
+        self.super_food_active_time = 0  # 当前奖励球出现的时间戳
         # 游戏状态
-        self.alive1 = True
-        self.alive2 = True
-        self.reset()
-    
-    def reset(self) -> Dict[str, Any]:
-        """重置游戏状态"""
-        # 初始化蛇的位置
-        center = self.board_size // 2
-        self.snake1 = [(center, center - 2)]
-        self.snake2 = [(center, center + 2)]
-        
-        # 初始化方向
-        self.direction1 = (0, 1)  # 向右
-        self.direction2 = (0, -1)  # 向左
-        
-        # 初始化食物
-        self.foods = []
-        self._generate_foods()
-        
-        # 重置游戏状态
         self.alive1 = True
         self.alive2 = True
         self.current_player = 1
         self.game_state = config.GameState.ONGOING
         self.move_count = 0
         self.history = []
-        
+        self._generate_foods()
+        self.reset()
+    
+    def reset(self) -> Dict[str, Any]:
+        # 初始化蛇的位置
+        center = self.board_size // 2
+        self.snake1 = [(center, center - 2)]
+        self.snake2 = [(center, center + 2)]
+        # 初始化方向
+        self.direction1 = (0, 1)  # 向右
+        self.direction2 = (0, -1)  # 向左
+        # 初始化食物
+        self.foods = []
+        self._generate_foods()
+        # 奖励球相关
+        self.super_foods = []
+        self.super_food_timer = 0
+        self.last_super_food_time = 0
+        self.super_food_count = 0
+        self.super_food_active_time = 0
+        # 游戏状态
+        self.alive1 = True
+        self.alive2 = True
+        self.current_player = 1
+        self.game_state = config.GameState.ONGOING
+        self.move_count = 0
+        self.history = []
         return self.get_state()
     
     def step(self, action1: Tuple[int, int], action2: Tuple[int, int]) -> Tuple[Dict[str, Any], float, float, bool, Dict[str, Any]]:
@@ -89,10 +96,25 @@ class SnakeGame(BaseGame):
             self.direction2 = action2
 
         # 同时移动两条蛇
+        grow1, grow2 = 0, 0
         if self.alive1:
-            self._move_snake(1)
+            grow1 = self._move_snake(1)
         if self.alive2:
-            self._move_snake(2)
+            grow2 = self._move_snake(2)
+
+        # 更新时间，决定是否生成奖励球
+        import time
+        now = time.time()
+        # 奖励球生成逻辑：每10秒出现一次，最多3次
+        if self.super_food_count < 3:
+            if not self.super_foods and (now - self.last_super_food_time >= 10):
+                self._generate_super_food()
+                self.last_super_food_time = now
+                self.super_food_active_time = now
+                self.super_food_count += 1
+        # 奖励球限时存在10秒，超时自动消失
+        if self.super_foods and (now - self.super_food_active_time >= 10):
+            self.super_foods = []
 
         # 检查游戏是否结束
         done = self._check_game_over()
@@ -112,6 +134,12 @@ class SnakeGame(BaseGame):
             'alive1': self.alive1,
             'alive2': self.alive2
         }
+        # 检查是否吃到奖励球
+        for idx, snake in enumerate([self.snake1, self.snake2], 1):
+            if self.super_foods and snake and snake[0] == self.super_foods[0]:
+                for _ in range(3):
+                    snake.insert(0, snake[0])  # 一次性加3节
+                self.super_foods = []  # 吃掉后消失
         return observation, reward1, reward2, done, info
 
     # === AI助手修改: 兼容单人step接口，方便多游戏GUI统一调用 ===
@@ -177,10 +205,10 @@ class SnakeGame(BaseGame):
     
     def get_winner(self) -> Optional[int]:
         """获取获胜者"""
-        # 先判断是否有一方长度达到20
-        if len(self.snake1) >= 20 and self.alive1:
+        # 先判断是否有一方长度达到25
+        if len(self.snake1) >= 25:
             return 1
-        if len(self.snake2) >= 20 and self.alive2:
+        if len(self.snake2) >= 25:
             return 2
         # 再判断死亡
         if not self.alive1 and self.alive2:
@@ -210,11 +238,17 @@ class SnakeGame(BaseGame):
             if 0 <= x < self.board_size and 0 <= y < self.board_size:
                 board[x, y] = 5
         
+        # 绘制奖励球
+        for x, y in self.super_foods:
+            if 0 <= x < self.board_size and 0 <= y < self.board_size:
+                board[x, y] = 6 # 奖励球类型
+        
         return {
             'board': board,
             'snake1': self.snake1.copy(),
             'snake2': self.snake2.copy(),
             'foods': self.foods.copy(),
+            'super_foods': self.super_foods.copy(),
             'direction1': self.direction1,
             'direction2': self.direction2,
             'alive1': self.alive1,
@@ -238,6 +272,11 @@ class SnakeGame(BaseGame):
         cloned_game.direction1 = self.direction1
         cloned_game.direction2 = self.direction2
         cloned_game.foods = self.foods.copy()
+        cloned_game.super_foods = self.super_foods.copy() # 克隆奖励球
+        cloned_game.super_food_timer = self.super_food_timer # 克隆奖励球计时器
+        cloned_game.last_super_food_time = self.last_super_food_time # 克隆上次奖励球生成时间
+        cloned_game.super_food_count = self.super_food_count # 克隆奖励球出现次数
+        cloned_game.super_food_active_time = self.super_food_active_time # 克隆奖励球出现时间
         cloned_game.alive1 = self.alive1
         cloned_game.alive2 = self.alive2
         cloned_game.current_player = self.current_player
@@ -256,7 +295,8 @@ class SnakeGame(BaseGame):
             'board': (self.board_size, self.board_size),
             'snake1': [],
             'snake2': [],
-            'foods': []
+            'foods': [],
+            'super_foods': [] # 新增奖励球空间
         }
     
     def _move_snake(self, player: int):
@@ -271,7 +311,7 @@ class SnakeGame(BaseGame):
             alive = self.alive2
         
         if not alive:
-            return
+            return 0 # 未吃到食物
         
         # 计算新头部位置
         head = snake[0]
@@ -284,7 +324,7 @@ class SnakeGame(BaseGame):
                 self.alive1 = False
             else:
                 self.alive2 = False
-            return
+            return 0 # 未吃到食物
         
         # 检查自身碰撞
         if new_head in snake:
@@ -292,7 +332,7 @@ class SnakeGame(BaseGame):
                 self.alive1 = False
             else:
                 self.alive2 = False
-            return
+            return 0 # 未吃到食物
         
         # 检查与对方蛇的碰撞
         other_snake = self.snake2 if player == 1 else self.snake1
@@ -301,20 +341,26 @@ class SnakeGame(BaseGame):
                 self.alive1 = False
             else:
                 self.alive2 = False
-            return
+            return 0 # 未吃到食物
         
         # 移动蛇
         snake.insert(0, new_head)
         
         # 检查是否吃到食物
+        ate_food = 0
         if new_head in self.foods:
             self.foods.remove(new_head)
             self._generate_foods()
+            ate_food = 1 # 吃到普通食物
         else:
             snake.pop()
+        
+        # 返回是否吃到普通食物（用于奖励）
+        return ate_food
     
     def _generate_foods(self):
         """生成食物"""
+        # 保持原有普通食物生成逻辑
         while len(self.foods) < self.food_count:
             x = random.randint(0, self.board_size - 1)
             y = random.randint(0, self.board_size - 1)
@@ -323,13 +369,22 @@ class SnakeGame(BaseGame):
             # 确保食物不在蛇身上
             if pos not in self.snake1 and pos not in self.snake2 and pos not in self.foods:
                 self.foods.append(pos)
-    
+
+    def _generate_super_food(self):
+        # 只生成一个奖励球，且不与蛇或普通食物重叠
+        import random
+        while True:
+            pos = (random.randint(0, self.board_size - 1), random.randint(0, self.board_size - 1))
+            if pos not in self.snake1 and pos not in self.snake2 and pos not in self.foods:
+                self.super_foods = [pos]
+                break
+
     def _check_game_over(self) -> bool:
         # 如果有一方死亡，游戏结束
         if not self.alive1 or not self.alive2:
             return True
-        # 如果有一方长度达到20，游戏结束
-        if len(self.snake1) >= 20 or len(self.snake2) >= 20:
+        # 如果有一方长度达到25，游戏结束
+        if len(self.snake1) >= 25 or len(self.snake2) >= 25:
             return True
         return False
     

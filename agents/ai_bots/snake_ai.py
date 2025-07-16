@@ -30,16 +30,24 @@ class SnakeAI(BaseAgent):
         if not snake:
             return random.choice(valid_actions)
         head = snake[0]
-        # 1. A*寻路到最近食物
+        # 优先A*追逐奖励球
+        if hasattr(game, 'super_foods') and game.super_foods:
+            target_super = game.super_foods[0]
+            path = self._a_star_pathfinding(head, target_super, game, opp_snake)
+            if path and len(path) > 1:
+                next_pos = path[1]
+                action = self._pos_to_action(head, next_pos)
+                if self._is_safe_action(action, head, game, opp_snake):
+                    if not self._is_predicted_by_opponent(next_pos, opp_snake, opp_direction, game):
+                        return action
+        # 其次A*追逐普通食物
         if game.foods:
             target_food = self._find_nearest_food(head, game.foods)
             path = self._a_star_pathfinding(head, target_food, game, opp_snake)
             if path and len(path) > 1:
                 next_pos = path[1]
                 action = self._pos_to_action(head, next_pos)
-                # 2. 安全性评估
                 if self._is_safe_action(action, head, game, opp_snake):
-                    # 3. 对手预测：避开对手下一步可能到达的位置
                     if not self._is_predicted_by_opponent(next_pos, opp_snake, opp_direction, game):
                         return action
         # 4. 策略优化：优先选择安全且远离对手的方向
