@@ -231,7 +231,7 @@ class MultiGameGUI:
                 return False
 
             elif event.type == pygame.KEYDOWN:
-                # 处理贪吃蛇的键盘输入
+                # 只有未暂停时才允许玩家输入
                 if (
                     self.current_game == "snake"
                     and isinstance(self.current_agent, HumanAgent)
@@ -242,17 +242,23 @@ class MultiGameGUI:
                     self._handle_snake_input(event.key)
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # 左键点击
+                if event.button == 1:
                     mouse_pos = pygame.mouse.get_pos()
-
-                    # 检查按钮点击
+                    # 优化：暂停时只允许点击pause和quit按钮
+                    if self.paused:
+                        if self.buttons["pause"]["rect"].collidepoint(mouse_pos):
+                            self.paused = not self.paused
+                            self.buttons["pause"]["text"] = "Resume" if self.paused else "Pause"
+                            return True
+                        elif self.buttons["quit"]["rect"].collidepoint(mouse_pos):
+                            return False
+                        return True # 暂停时点击pause不返回True，只返回True
+                    # 未暂停时正常处理
                     click_result = self._handle_button_click(mouse_pos)
-                    if click_result is None:
+                    # 只有new_game、AI按钮、切换游戏按钮才reset_game
+                    if click_result is False:
                         return False
-                    elif click_result is True:
-                        # 如果点击了按钮，重置游戏状态,避免多余处理
-                        self.reset_game()
-                    # 检查五子棋棋盘点击
+                    # 不再对pause按钮返回True时调用reset_game
                     if (
                         self.current_game == "gomoku"
                         and not self.game_over
@@ -270,14 +276,18 @@ class MultiGameGUI:
             if button_info["rect"].collidepoint(mouse_pos):
                 if button_name == "new_game":
                     self.reset_game()
+                    return True
                 elif button_name == "quit":
-                    return None
+                    return False
                 elif button_name == "pause":
                     self.paused = not self.paused
                     self.buttons["pause"]["text"] = "Resume" if self.paused else "Pause"
+                    return None
                 elif button_name in ["gomoku_game", "snake_game"]:
                     game_type = button_name.split("_")[0]
                     self._switch_game(game_type)
+                    self.reset_game()
+                    return True
                 elif button_name in self.AI_BUTTON_TO_CLASS:
                     # === 修复：AI按钮高亮与AI类型切换一致 ===
                     old_btn = self.AI_CLASS_TO_BUTTON.get(self.selected_ai)
@@ -287,8 +297,8 @@ class MultiGameGUI:
                     self.buttons[button_name]["color"] = COLORS["YELLOW"]
                     self._create_ai_agent()
                     self.reset_game()
-                return True
-        return False
+                    return True
+        return None
 
     def _handle_gomoku_click(self, mouse_pos: Tuple[int, int]):
         """处理五子棋棋盘点击"""
