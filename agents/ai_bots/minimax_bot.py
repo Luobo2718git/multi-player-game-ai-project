@@ -3,10 +3,14 @@ import time
 from games.gomoku.gomoku_game import GomokuGame
 
 class MinimaxBot:
-    def __init__(self, name="Minimax AI", player_id=2, search_depth=3, time_limit=5.0):
+    def __init__(self, name="Minimax AI", player_id=2, search_depth=3, time_limit=5.0, max_depth=None, **kwargs):
         self.name = name
         self.player_id = player_id
-        self.search_depth = search_depth
+        # 兼容max_depth和search_depth参数
+        if max_depth is not None:
+            self.search_depth = max_depth
+        else:
+            self.search_depth = search_depth
         self.time_limit = time_limit  # 单步最大思考时间（秒）
         self.start_time = None
 
@@ -14,8 +18,19 @@ class MinimaxBot:
         """
         综合防守优先、动态深度、时间控制和alpha-beta剪枝的主入口
         """
+        # 兼容observation为dict或ndarray
+        if isinstance(board, dict):
+            if 'board' in board:
+                board = board['board']
+            else:
+                raise ValueError('Observation dict missing "board" key')
         self.start_time = time.time()
-        opponent = 3 - player
+        # 兼容player为int或env对象
+        if hasattr(player, 'game') and hasattr(player.game, 'current_player'):
+            player_id = player.game.current_player
+        else:
+            player_id = player
+        opponent = 3 - player_id
         candidates = self.get_candidate_moves(board)
         # 动态深度调整：候选点多时自动降低深度
         if len(candidates) > 12:
@@ -44,8 +59,8 @@ class MinimaxBot:
         beta = float('inf')
         for move in candidates:
             new_board = board.copy()
-            new_board[move[0], move[1]] = player
-            score = self.alphabeta(new_board, search_depth-1, False, player, alpha, beta)
+            new_board[move[0], move[1]] = player_id
+            score = self.alphabeta(new_board, search_depth-1, False, player_id, alpha, beta)
             if score > best_score:
                 best_score = score
                 best_move = move
