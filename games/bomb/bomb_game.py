@@ -7,25 +7,6 @@ from typing import Dict, List, Tuple, Any, Optional, Union
 from ..base_game import BaseGame
 import config
 
-# 马卡龙色系定义 (颜色稍微更深一些)
-COLORS = {
-    'WHITE': (220, 228, 235),  # 柔和白
-    'BLACK': (30, 30, 30),     # 深灰 (柔和黑)
-    'RED': (235, 172, 183),    # 粉红 (柔和红)
-    'BLUE': (153, 196, 210),   # 浅蓝 (柔和蓝)
-    'GREEN': (124, 218, 124),  # 浅绿 (柔和绿)
-    'GRAY': (172, 172, 172),   # 银色 (柔和灰)
-    'LIGHT_GRAY': (200, 200, 200), # 浅灰色 (更浅的柔和灰)
-    'DARK_GRAY': (85, 85, 85),  # 暗灰色 (更深的柔和灰)
-    'YELLOW': (235, 235, 133), # 淡金黄色 (柔和黄)
-    'ORANGE': (235, 203, 166), # 桃色 (柔和橙)
-    'CYAN': (155, 218, 218),   # 淡青色 (柔和青)
-    'BROWN': (190, 160, 120),  # 茶色 (柔和棕)
-    'PURPLE': (201, 140, 201), # 李子色 (柔和紫)
-    'GOLD': (235, 198, 165),   # 桃色 (作为护盾色，与柔和橙相似)
-    'DARK_GREEN': (132, 231, 132) # 淡绿色 (柔和深绿)
-}
-
 
 class BombGame(BaseGame):
     """
@@ -44,7 +25,8 @@ class BombGame(BaseGame):
     ITEM_RANGE_UP = 41 # 增加炸弹范围
     ITEM_SHIELD = 42 # 新增：护盾物品
     ITEM_SQUARE_RANGE_UP = 43 # 新增：方形爆炸范围物品
-
+    WILL_EXPLOSION = 44
+    
     # 护盾持续回合数
     SHIELD_DURATION = 30
 
@@ -427,7 +409,7 @@ class BombGame(BaseGame):
 
                     cell_type = self._board[exp_pos] # 使用 _board
                     
-                    # 检查这个位置是否有不可破坏的墙
+                    # # 检查这个位置是否有不可破坏的墙
                     # if cell_type == self.WALL:
                     #     break # 遇到不可破坏的墙，爆炸停止
 
@@ -724,7 +706,12 @@ class BombGame(BaseGame):
         """获取赢家ID (1, 2, 或 0 代表平局/进行中)"""
         # 如果双方玩家都死亡，则平局
         if not self.alive1 and not self.alive2:
-            return 0 
+            if self.player1_score > self.player2_score:
+                return 1
+            elif self.player1_score < self.player2_score:
+                return 2
+            elif self.player1_score == self.player2_score:
+                return 0
         # 如果玩家1死亡，玩家2获胜
         elif not self.alive1:
             return 2 

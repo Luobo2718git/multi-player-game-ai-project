@@ -310,6 +310,11 @@ class GameGUI:
                     if self.observation['player2_shield_active']:
                         pygame.draw.circle(self.screen, COLORS['GOLD'], p2_rect.center, self.cell_size // 2, 3) # 护盾光环
 
+                
+                # pos = (r, c)
+                # if self.player2_agent.escape_path != None:
+                #     if pos in self.player2_agent.escape_path:
+                #         pygame.draw.circle(self.screen, COLORS['DARK_GREEN'], rect.center, self.cell_size // 2 - 2)
 
         # 绘制信息面板 (修改Y坐标以适应顶部信息栏)
         info_y = self.header_height + self.board_size * self.cell_size + 20
