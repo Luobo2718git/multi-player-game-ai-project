@@ -8,10 +8,10 @@ from games.bomb.bomb_game import BombGame # 导入BombGame，用于访问其常�
 class BombAI(BaseAgent):
     """泡泡堂AI智能体"""
     
-    def __init__(self, name="BombAI", player_id=2): # 默认为玩家2
+    def __init__(self, name="BombAI", player_id=2, move_delay_ticks : int = 2): # 默认为玩家2
         super().__init__(name, player_id)
         self._move_delay_counter = 0 # 控制移动频率的计数器
-        self._move_delay_ticks = 2 # AI每2个游戏帧移动一次
+        self._move_delay_ticks = move_delay_ticks # AI每2个游戏帧移动一次
         self.escape_path = []
 
     def get_action(self, observation: Dict[str, Any], env: Any) -> Union[Tuple[int, int], Tuple[int, int, bool]]:

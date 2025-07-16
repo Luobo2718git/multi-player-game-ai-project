@@ -30,12 +30,14 @@ COLORS = {
 class GameGUI:
     """泡泡堂游戏图形界面"""
     
-    def __init__(self, game_mode: str = "human_vs_ai"): # 添加 game_mode 参数
+    def __init__(self, game_mode: str = "human_vs_ai", move_delay_ticks: int = 2): # 添加 game_mode 参数
         pygame.init()
         pygame.display.set_caption("泡泡堂")
 
         self.board_size = 19 # 泡泡堂棋盘大小
         self.cell_size = 40 # 调整单元格大小以提高可见性
+
+        self.ai_move_delay_ticks = move_delay_ticks
 
         self.font_path = self._get_chinese_font()
         
@@ -86,7 +88,7 @@ class GameGUI:
             self.player2_agent = bombHumanAgent(player_id=2)
             pygame.display.set_caption("泡泡堂 双人对战")
         else: # 默认 human_vs_ai
-            self.player2_agent = BombAI(player_id=2) 
+            self.player2_agent = BombAI(player_id=2, move_delay_ticks = self.ai_move_delay_ticks) 
             pygame.display.set_caption("泡泡堂 AI 对战")
 
         self.game_mode = game_mode # 保存游戏模式
@@ -397,8 +399,10 @@ def main():
     print("2: 双人对战 (玩家1 vs 玩家2)")
     
     mode_choice = input("请输入你的选择 (1 或 2): ")
+
     
     game_mode = "human_vs_ai" # 默认模式
+    move_delay_ticks = 2
     if mode_choice == '2':
         game_mode = "human_vs_human"
         print("\n启动泡泡堂 双人对战...")
@@ -411,10 +415,18 @@ def main():
         print("- 玩家1 (蓝色): 方向键或 WASD 控制移动, 空格键 放置炸弹")
         print("- 玩家2 (红色): AI 控制")
 
+        print("\n请选择难度：")
+        difficulty = input("简单 1/困难 2:")
+        if difficulty == '1':
+            move_delay_ticks = 2
+        elif difficulty == '2':
+            move_delay_ticks = 1
+        
+
     print("- 按 'R' 键重置当前游戏")
     print("- 按 'ESC' 键退出游戏")
     
-    gui = GameGUI(game_mode=game_mode) # 将选择的模式传递给 GameGUI
+    gui = GameGUI(game_mode=game_mode, move_delay_ticks=move_delay_ticks) # 将选择的模式传递给 GameGUI
     gui.run()
 
 if __name__ == '__main__':
