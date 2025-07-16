@@ -12,7 +12,7 @@ COLORS = {
     'WHITE': (220, 228, 235),  # 柔和白
     'BLACK': (30, 30, 30),     # 柔和黑
     'RED': (235, 172, 183),    # 柔和红
-    'BLUE': (153, 196, 210),   # 柔和蓝
+    'BLUE': (135, 206, 235),   # 天蓝色 (修改)
     'GREEN': (124, 218, 124),  # 柔和绿
     'GRAY': (172, 172, 172),   # 柔和灰
     'LIGHT_GRAY': (200, 200, 200), # 更浅的柔和灰
@@ -32,7 +32,7 @@ class GameGUI:
         pygame.init()
         pygame.display.set_caption("泡泡堂 AI 对战")
 
-        self.board_size = 15 # 泡泡堂棋盘大小
+        self.board_size = 19 # 泡泡堂棋盘大小
         self.cell_size = 40 # 调整单元格大小以提高可见性
 
         self.font_path = self._get_chinese_font()
@@ -41,9 +41,12 @@ class GameGUI:
         self.font_medium = pygame.font.Font(self.font_path, 20)
         self.font_small = pygame.font.Font(self.font_path, 16)
 
+        # 定义顶部信息栏的高度
+        self.header_height = 50 
 
         self.screen_width = self.board_size * self.cell_size
-        self.screen_height = self.board_size * self.cell_size + 100 # 为信息面板增加空间
+        # 屏幕高度 = 顶部信息栏 + 棋盘高度 + 底部信息栏高度
+        self.screen_height = self.header_height + self.board_size * self.cell_size + 100 
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.clock = pygame.time.Clock()
 
@@ -69,7 +72,7 @@ class GameGUI:
             pygame.K_a: (0, -1),
             pygame.K_RIGHT: (0, 1),
             pygame.K_d: (0, 1),
-            pygame.K_SPACE: (0, 0, True) # 放置炸弹动作
+            pygame.K_SPACE: (0, 0, True), # 放置炸弹动作
         }
 
         self._initialize_game() # 直接初始化游戏
@@ -97,12 +100,18 @@ class GameGUI:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE: # 添加ESC键退出
                     return False
-                # 存储按下的移动/动作键
-                if event.key in self.key_to_action_map:
-                    self.pressed_keys[event.key] = True
                 
-                if event.key == pygame.K_r: # 重置游戏
-                    self._initialize_game() # 重新初始化当前游戏
+                # 如果游戏不活跃 (即游戏结束时)，只处理 'R' 和 'ESC' 键
+                if not self.game_active:
+                    if event.key == pygame.K_r: # 重置游戏
+                        self._initialize_game() # 重新初始化当前游戏
+                        return True # 游戏已重置，继续运行
+                    elif event.key == pygame.K_ESCAPE: # 退出游戏
+                        return False # 退出游戏循环
+                
+                # 游戏活跃时，处理其他按键
+                if self.game_active and event.key in self.key_to_action_map:
+                    self.pressed_keys[event.key] = True
             
             if event.type == pygame.KEYUP:
                 # 从pressed_keys中移除松开的按键
@@ -114,28 +123,30 @@ class GameGUI:
     def _get_chinese_font(self):
         """获取中文字体路径"""
         # 尝试不同系统的中文字体
-        font_paths = [
-            # macOS
-            "/System/Library/Fonts/PingFang.ttc",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/Library/Fonts/Arial Unicode.ttf",
-            # Windows
-            "C:/Windows/Fonts/simhei.ttf",
-            "C:/Windows/Fonts/simsun.ttc",
-            "C:/Windows/Fonts/msyh.ttc",
-            # Linux
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        ]
+        # font_paths = [
+        #     # macOS
+        #     "/System/Library/Fonts/PingFang.ttc",
+        #     "/System/Library/Fonts/Helvetica.ttc",
+        #     "/Library/Fonts/Arial Unicode.ttf",
+        #     # Windows 
+        #     "C:/Windows/Fonts/msyh.ttc",
+        #     "C:/Windows/Fonts/simhei.ttf",
+        #     "C:/Windows/Fonts/simsun.ttc",
+           
+        #     # Linux
+        #     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        #     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        # ]
 
-        for font_path in font_paths:
-            if os.path.exists(font_path):
-                print(f"找到中文字体: {font_path}")
-                return font_path
+        # for font_path in font_paths:
+        #     if os.path.exists(font_path):
+        #         print(f"找到中文字体: {font_path}")
+        #         return font_path
             
 
-        # 如果没有找到中文字体，使用pygame默认字体
-        return None
+        # # 如果没有找到中文字体，使用pygame默认字体
+        # return None
+        return "Fonts\Font1.ttf"
 
     def update_game(self):
         """更新游戏状态"""
@@ -181,6 +192,39 @@ class GameGUI:
         if terminal:
             self.game_active = False # 游戏结束
 
+    def _draw_message_box(self, messages: list[str], text_color: Tuple[int, int, int] = COLORS['BLACK']):
+        """
+        绘制一个居中的消息弹窗。
+        Args:
+            messages: 要显示的文本行列表。
+            text_color: 文本颜色。
+        """
+        # 半透明背景
+        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))  # 黑色，透明度180 (0-255)
+        self.screen.blit(overlay, (0, 0))
+
+        # 消息框的尺寸和位置
+        box_width = self.screen_width * 0.7
+        box_height_per_line = self.font_medium.get_height() + 10 # 每行文本的高度 + 间距
+        box_height = len(messages) * box_height_per_line + 40 # 总高度，加上上下边距
+        
+        box_x = (self.screen_width - box_width) // 2
+        box_y = (self.screen_height - box_height) // 2
+        message_box_rect = pygame.Rect(box_x, box_y, box_width, box_height)
+
+        pygame.draw.rect(self.screen, COLORS['LIGHT_GRAY'], message_box_rect, border_radius=10) # 弹窗背景
+        pygame.draw.rect(self.screen, COLORS['DARK_GRAY'], message_box_rect, 3, border_radius=10) # 弹窗边框
+
+        # 绘制消息文本
+        current_y = message_box_rect.top + 20
+        for msg in messages:
+            text_surface = self.font_medium.render(msg, True, text_color)
+            text_rect = text_surface.get_rect(center=(message_box_rect.centerx, current_y))
+            self.screen.blit(text_surface, text_rect)
+            current_y += box_height_per_line
+
+
     def draw(self):
         """绘制游戏界面"""
         self.screen.fill(COLORS['WHITE']) # 清空屏幕
@@ -188,12 +232,20 @@ class GameGUI:
         if not self.env:
             return
 
+        # 显示游戏计时器 (挪至游戏面板上方)
+        # 修复：游戏结束后倒计时显示为0
+        display_time = max(0, self.game_duration - int(time.time() - self.game_start_time)) if self.game_active else 0
+        timer_text = self.font_medium.render(f"倒计时: {display_time} 秒", True, COLORS['BLACK'])
+        timer_rect = timer_text.get_rect(center=(self.screen_width // 2, self.header_height // 2)) # 放置在顶部信息栏中央
+        self.screen.blit(timer_text, timer_rect)
+
         board_state = self.observation['board']
         
         # 绘制棋盘
         for r in range(self.board_size):
             for c in range(self.board_size):
-                rect = pygame.Rect(c * self.cell_size, r * self.cell_size, self.cell_size, self.cell_size)
+                # 调整棋盘元素的Y坐标
+                rect = pygame.Rect(c * self.cell_size, r * self.cell_size + self.header_height, self.cell_size, self.cell_size)
                 cell_value = board_state[r, c]
 
                 # 绘制方块和背景
@@ -227,7 +279,7 @@ class GameGUI:
                     self.screen.blit(item_text, text_rect)
                 elif cell_value == self.env.game.ITEM_SQUARE_RANGE_UP: # 绘制方形爆炸物品
                     pygame.draw.rect(self.screen, COLORS['DARK_GREEN'], rect)
-                    item_text = self.font_small.render("SQ", True, COLORS['WHITE'])
+                    item_text = self.font_small.render("SQ", True, COLORS['BLACK'])
                     text_rect = item_text.get_rect(center=rect.center)
                     self.screen.blit(item_text, text_rect)
                 else:
@@ -237,7 +289,8 @@ class GameGUI:
                 # 玩家绘制在顶层
                 # 绘制玩家
                 if self.observation['alive1']:
-                    p1_rect = pygame.Rect(self.observation['player1_pos'][1] * self.cell_size, self.observation['player1_pos'][0] * self.cell_size, self.cell_size, self.cell_size)
+                    # 调整玩家矩形的Y坐标
+                    p1_rect = pygame.Rect(self.observation['player1_pos'][1] * self.cell_size, self.observation['player1_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
                     pygame.draw.rect(self.screen, COLORS['BLUE'], p1_rect) # 玩家1
                     # 绘制眼睛或小标记以区分
                     pygame.draw.circle(self.screen, COLORS['BLACK'], (p1_rect.centerx - self.cell_size // 6, p1_rect.centery - self.cell_size // 6), self.cell_size // 10)
@@ -247,7 +300,8 @@ class GameGUI:
                         pygame.draw.circle(self.screen, COLORS['GOLD'], p1_rect.center, self.cell_size // 2, 3) # 护盾光环
 
                 if self.observation['alive2']:
-                    p2_rect = pygame.Rect(self.observation['player2_pos'][1] * self.cell_size, self.observation['player2_pos'][0] * self.cell_size, self.cell_size, self.cell_size)
+                    # 调整玩家矩形的Y坐标
+                    p2_rect = pygame.Rect(self.observation['player2_pos'][1] * self.cell_size, self.observation['player2_pos'][0] * self.cell_size + self.header_height, self.cell_size, self.cell_size)
                     pygame.draw.rect(self.screen, COLORS['RED'], p2_rect) # 玩家2
                     # 绘制眼睛或小标记以区分
                     pygame.draw.circle(self.screen, COLORS['WHITE'], (p2_rect.centerx - self.cell_size // 6, p2_rect.centery - self.cell_size // 6), self.cell_size // 10)
@@ -257,8 +311,8 @@ class GameGUI:
                         pygame.draw.circle(self.screen, COLORS['GOLD'], p2_rect.center, self.cell_size // 2, 3) # 护盾光环
 
 
-        # 绘制信息面板
-        info_y = self.board_size * self.cell_size + 20
+        # 绘制信息面板 (修改Y坐标以适应顶部信息栏)
+        info_y = self.header_height + self.board_size * self.cell_size + 20
         start_x = 20
 
         # 泡泡堂特定信息
@@ -274,43 +328,33 @@ class GameGUI:
         range_type2 = f"范围: {'方形' if self.observation['player2_range_type'] == 'square' else '十字'}"
         score2 = self.observation['player2_score'] # 获取玩家2分数
 
-        alive1 = "存活" if self.observation['alive1'] else "死亡"
-        alive2 = "存活" if self.observation['alive2'] else "死亡"
-        
-        player_info = f"你: 炸弹: {bombs1} 范围: {range1} {range_type1} {shield1} 分数: {score1} ({alive1})"
-        ai_info = f"AI: 炸弹: {bombs2} 范围: {range2} {range_type2} {shield2} 分数: {score2} ({alive2})"
+        player_info = f"Player1     :  炸弹数量: {bombs1}  范围: {range1}  类型：{range_type1} {shield1} 分数: {score1} "
+        ai_info = f"Player2(AI):  炸弹数量: {bombs2}  范围: {range2}  类型：{range_type2} {shield2} 分数: {score2} "
 
-        info_surface = self.font_small.render(player_info, True, COLORS['BLUE'])
+        info_surface = self.font_medium.render(player_info, True, COLORS['BLUE'])
         self.screen.blit(info_surface, (start_x, info_y))
-        info_surface2 = self.font_small.render(ai_info, True, COLORS['RED'])
-        self.screen.blit(info_surface2, (start_x, info_y + 25))
-
-        # 显示游戏计时器
-        elapsed_time = time.time() - self.game_start_time
-        remaining_time = max(0, self.game_duration - int(elapsed_time))
-        timer_text = self.font_medium.render(f"剩余时间: {remaining_time} 秒", True, COLORS['BLACK'])
-        timer_rect = timer_text.get_rect(center=(self.screen_width // 2, info_y + 12))
-        self.screen.blit(timer_text, timer_rect)
+        info_surface2 = self.font_medium.render(ai_info, True, COLORS['RED'])
+        self.screen.blit(info_surface2, (start_x, info_y +30))
 
 
-        # 游戏结束信息
+        # 游戏结束信息弹窗
         if not self.game_active and self.env and self.env.is_terminal():
             winner = self.env.get_winner()
-            game_over_text = ""
+            game_over_messages = []
             if winner == 1:
-                game_over_text = "玩家 1 获胜！"
+                game_over_messages.append("玩家 1 获胜！")
             elif winner == 2:
-                game_over_text = "玩家 2 获胜！"
+                game_over_messages.append("玩家 2 获胜！")
             else:
-                game_over_text = "平局！"
+                game_over_messages.append("平局！")
             
-            game_over_surface = self.font_large.render(game_over_text, True, COLORS['YELLOW'])
-            game_over_rect = game_over_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-            self.screen.blit(game_over_surface, game_over_rect)
+            game_over_messages.append(f"最终分数:")
+            game_over_messages.append(f"玩家1: {self.observation['player1_score']}")
+            game_over_messages.append(f"玩家2: {self.observation['player2_score']}")
+            game_over_messages.append("按 'R' 重玩")
+            game_over_messages.append("按 'ESC' 退出") # 添加退出提示
             
-            restart_text = self.font_medium.render("按 'R' 重玩", True, COLORS['WHITE'])
-            restart_rect = restart_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
-            self.screen.blit(restart_text, restart_rect)
+            self._draw_message_box(game_over_messages)
 
 
         pygame.display.flip()
@@ -323,8 +367,9 @@ class GameGUI:
             # 处理事件
             running = self.handle_events()
             
-            # 更新游戏
-            self.update_game()
+            # 只有当游戏活跃时才更新游戏状态
+            if self.game_active:
+                self.update_game()
             
             # 绘制界面
             self.draw()

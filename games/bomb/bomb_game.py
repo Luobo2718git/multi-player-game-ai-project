@@ -37,7 +37,7 @@ class BombGame(BaseGame):
     WALL = 1
     DESTRUCTIBLE_BLOCK = 2
     BOMB_START_ID = 10 # 炸弹ID从10开始，用于区分不同炸弹的倒计时，如10: 3秒，11: 2秒，12: 1秒
-    EXPLOSION = 20
+    EXPLOSION = 28
     PLAYER1 = 30
     PLAYER2 = 31
     ITEM_BOMB_UP = 40 # 增加炸弹数量
@@ -46,9 +46,9 @@ class BombGame(BaseGame):
     ITEM_SQUARE_RANGE_UP = 43 # 新增：方形爆炸范围物品
 
     # 护盾持续回合数
-    SHIELD_DURATION = 5 
+    SHIELD_DURATION = 30
 
-    def __init__(self, board_size: int = 15, initial_bombs: int = 2, initial_range: int = 1, # 修改：initial_bombs 默认为2
+    def __init__(self, board_size: int = 15, initial_bombs: int = 1, initial_range: int = 1, # 修改：initial_bombs 默认为2
                  destructible_block_density: float = 0.5, item_spawn_chance: float = 0.5): # 修改：item_spawn_chance 增加到0.5
         game_config = {
             'board_size': board_size,
@@ -360,8 +360,12 @@ class BombGame(BaseGame):
         explosion_cells = set()
         explosion_cells.add(bomb_pos) # 炸弹中心
 
-        directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # 右，左，下，上
-
+        if bomb_range_type == 'cross':
+            directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # 右，左，下，上
+        elif bomb_range_type == 'square':
+            directions = [(0, 1), (0, -1), (1, 0), (-1, 0), 
+                          (1, 1), (1, -1), (-1, 1), (-1, -1)]
+            
         for dr, dc in directions:
             for i in range(1, bomb_range + 1):
                 exp_pos = (bomb_pos[0] + dr * i, bomb_pos[1] + dc * i)
