@@ -177,15 +177,18 @@ class SnakeGame(BaseGame):
     
     def get_winner(self) -> Optional[int]:
         """获取获胜者"""
-        if not self.is_terminal():
-            return None
-        
-        if self.alive1 and not self.alive2:
+        # 先判断是否有一方长度达到15
+        if len(self.snake1) >= 15 and self.alive1:
             return 1
-        elif self.alive2 and not self.alive1:
+        if len(self.snake2) >= 15 and self.alive2:
             return 2
-        else:
-            return None  # 平局
+        # 再判断死亡
+        if not self.alive1 and self.alive2:
+            return 2
+        if not self.alive2 and self.alive1:
+            return 1
+        # 同时死亡或都未达成胜利条件
+        return None
     
     def get_state(self) -> Dict[str, Any]:
         """获取当前游戏状态"""
@@ -322,8 +325,13 @@ class SnakeGame(BaseGame):
                 self.foods.append(pos)
     
     def _check_game_over(self) -> bool:
-        """检查游戏是否结束"""
-        return not (self.alive1 or self.alive2)
+        # 如果有一方死亡，游戏结束
+        if not self.alive1 or not self.alive2:
+            return True
+        # 如果有一方长度达到15，游戏结束
+        if len(self.snake1) >= 15 or len(self.snake2) >= 15:
+            return True
+        return False
     
     def _reward_for_player(self, player: int, old_alive: bool) -> float:
         if player == 1:

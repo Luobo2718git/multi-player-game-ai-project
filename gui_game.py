@@ -72,7 +72,10 @@ class MultiGameGUI:
         # 游戏计时
         self.last_update = time.time()
         self.update_interval = 0.3  # 贪吃蛇更新间隔
-
+        # === 新增：方向变量 ===
+        self.player_direction = None
+        self.ai_direction = None
+        self.victory_length = 15  # 贪吃蛇胜利长度
         self._switch_game("gomoku")
 
     def _get_chinese_font(self):
@@ -178,7 +181,7 @@ class MultiGameGUI:
         elif game_type == "snake":
             self.env = SnakeEnv(board_size=20)
             self.cell_size = 25
-            self.update_interval = 0.3  # 贪吃蛇需要频繁更新
+            self.update_interval = 0.2  # 贪吃蛇加快移动速度
 
         self.human_agent = HumanAgent(name="Human Player", player_id=1)
         self._create_ai_agent()
@@ -203,7 +206,8 @@ class MultiGameGUI:
 
     def reset_game(self):
         """重置游戏"""
-        self.env.reset()
+        if self.env is not None:
+            self.env.reset()
         self.game_over = False
         self.winner = None
         self.last_move = None
@@ -212,6 +216,13 @@ class MultiGameGUI:
         self.last_update = time.time()
         self.paused = False
         self.buttons["pause"]["text"] = "Pause"
+        # === 新增：初始化方向变量 ===
+        if self.current_game == "snake" and self.env is not None and hasattr(self.env, "game"):
+            self.player_direction = getattr(self.env.game, "direction1", (0,1))
+            self.ai_direction = getattr(self.env.game, "direction2", (0,-1))
+        else:
+            self.player_direction = None
+            self.ai_direction = None
 
     def handle_events(self) -> bool:
         """处理事件"""
@@ -311,7 +322,7 @@ class MultiGameGUI:
 
         if key in key_to_action:
             action = key_to_action[key]
-            self._make_move(action)
+            self.player_direction = action  # 只更新方向，不直接移动
 
     def _make_move(self, action):
         """执行移动"""
@@ -346,52 +357,77 @@ class MultiGameGUI:
         """更新游戏"""
         if self.game_over or self.paused:
             return
-
         current_time = time.time()
-
-        # 检查是否需要更新
         if current_time - self.last_update < self.update_interval:
             return
-
         self.last_update = current_time
-
-        # AI回合
-        if not isinstance(self.current_agent, HumanAgent) and self.thinking:
-            try:
-                # 获取AI动作
-                if isinstance(self.ai_agent, MinimaxBot) and self.current_game == "gomoku":
-                    action = self.ai_agent.get_action(self.env.get_board_state(), 2)
-                elif isinstance(self.ai_agent, MCTSBot) and self.current_game == "gomoku":
-                    action = self.ai_agent.get_action(None, self.env)
+        # === 贪吃蛇持续移动逻辑 ===
+        if self.current_game == "snake" and self.env is not None and hasattr(self.env, "game"):
+            # AI每帧都决策
+            if getattr(self.env.game, "alive2", False):
+                observation = self.env._get_observation()
+                ai_action = self.ai_agent.get_action(observation, self.env)
+                if ai_action is not None:
+                    self.ai_direction = ai_action
+            player_dir = self.player_direction if self.player_direction is not None else getattr(self.env.game, "direction1", (0,1))
+            ai_dir = self.ai_direction if self.ai_direction is not None else getattr(self.env.game, "direction2", (0,-1))
+            step_fn = getattr(self.env, "step", None)
+            if callable(step_fn):
+                result = self.env.step(player_dir, ai_dir)
+                if result and len(result) >= 5:
+                    observation, reward1, reward2, done, info = result[:5]
                 else:
-                    observation = self.env._get_observation()
-                    action = self.current_agent.get_action(observation, self.env)
-
-                if action:
-                    self._make_move(action)
-
-                self.thinking = False
-
-            except Exception as e:
-                print(f"AI thinking failed: {e}")
-                self.thinking = False
-
-        # 贪吃蛇自动更新（不需要等待输入）
-        elif (
-            self.current_game == "snake"
-            and isinstance(self.current_agent, HumanAgent)
-            and not self.thinking
-        ):
-            # 贪吃蛇需要持续移动，如果没有输入就保持上一个方向
-            current_direction = None
-            if self.env.game.current_player == 1:
-                current_direction = self.env.game.direction1
+                    observation, reward1, reward2, done, info = None, 0, 0, False, {}
             else:
-                current_direction = self.env.game.direction2
-
-            # 直接使用当前方向作为动作
-            action = current_direction
-            self._make_move(action)
+                observation, reward1, reward2, done, info = None, 0, 0, False, {}
+            # 胜负判定
+            snake1 = getattr(self.env.game, "snake1", [])
+            snake2 = getattr(self.env.game, "snake2", [])
+            alive1 = getattr(self.env.game, "alive1", False)
+            alive2 = getattr(self.env.game, "alive2", False)
+            if len(snake1) >= self.victory_length and alive1:
+                self.game_over = True
+                self.winner = 1
+            elif len(snake2) >= self.victory_length and alive2:
+                self.game_over = True
+                self.winner = 2
+            elif not alive2 and alive1:
+                self.game_over = True
+                self.winner = 1
+            elif not alive1 and alive2:
+                self.game_over = True
+                self.winner = 2
+            elif done:
+                self.game_over = True
+                winner_fn = getattr(self.env, "get_winner", None)
+                winner = winner_fn() if callable(winner_fn) else None
+                self.winner = winner if winner is not None else 0
+        else:
+            # GomokuGame: 只需一个动作
+            if self.game_over:
+                return
+            if not isinstance(self.current_agent, HumanAgent) and self.thinking:
+                try:
+                    if isinstance(self.ai_agent, MinimaxBot) and self.current_game == "gomoku":
+                        action = self.ai_agent.get_action(self.env.get_board_state(), 2)
+                    elif isinstance(self.ai_agent, MCTSBot) and self.current_game == "gomoku":
+                        action = self.ai_agent.get_action(None, self.env)
+                    else:
+                        observation = self.env._get_observation()
+                        action = self.current_agent.get_action(observation, self.env)
+                    if action:
+                        self._make_move(action)
+                    self.thinking = False
+                except Exception as e:
+                    print(f"AI thinking failed: {e}")
+                    self.thinking = False
+            elif (
+                self.current_game == "gomoku"
+                and isinstance(self.current_agent, HumanAgent)
+                and not self.thinking
+            ):
+                # 五子棋等待玩家输入
+                pass
 
     def draw(self):
         """绘制游戏界面"""
@@ -635,6 +671,15 @@ class MultiGameGUI:
 
         info_surface = self.font_small.render(player_info, True, COLORS["DARK_GRAY"])
         self.screen.blit(info_surface, (status_x, info_y))
+
+        # 绘制胜利条件到右侧按钮区下方
+        if self.current_game == "snake":
+            victory_text = f"胜利条件：蛇长度达到{self.victory_length}或对方死亡"
+            victory_surface = self.font_small.render(victory_text, True, COLORS["BLACK"])
+            # 右下角坐标
+            right_x = self.window_width - victory_surface.get_width() - 20
+            bottom_y = self.window_height - victory_surface.get_height() - 20
+            self.screen.blit(victory_surface, (right_x, bottom_y))
 
     def run(self):
         """运行游戏主循环"""
